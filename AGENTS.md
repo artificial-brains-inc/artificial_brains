@@ -1,0 +1,11 @@
+# Artificial Brains — Agent Guide
+
+Create a brain using `from ab import Brain`. Use `brain.input(name, neurons)`, `brain.opu(name, rhythm, TNorm)`, `brain.output(name, n=1)` and `brain.connect(source, target)` (excitatory by default). High-gamma is an ordinary OPU and can be placed throughout the circuit: `brain.opu("FAST", "high-gamma", 10)`. All rhythms accept TNorm 0–10. Omitted high-gamma TNorm preserves the default reference. Inhibitory connections use `brain.connect("A", "B", "inh")` (full reference) or `brain.connect("A", "B", "inh", 0.9)` (90% of that reference). Strength is a finite multiplier of at least 0.1 with no upper cap: 1.25, 2.5 and 4 are accepted. Omitted strength is 1.0; no inhibition means remove the edge. Booklet recommendations guide selection; they are not enforced ceilings. This is not a percentage of spikes guaranteed to disappear, and does not alter TNorm. Use feedback through another OPU to oppose/reset an active OPU; high-gamma can also be used in that feedback circuit, including feedback from a bistable output.
+
+Save the design as `brain.abdesign.json`. Alternatively, run `ab design` and edit it in Canvas or Python, then use the Build brain, Run brain and Stop brain controls when connected to a compatible Prima-Lux. The two views describe the same brain. Input and output names used in your application must match the saved brain design.
+
+To prepare the brain, connect an onboarded Prima-Lux and use `ab build brain --brain brain.abdesign.json`. Wait for READY before running `ab run`. The device must support Brain-design builds. No build command starts the actuators.
+
+For live applications, use `ABClient.from_env(env_path=".env")` and `client.start_from_env(...)`. Publish each observation immediately with `session.publish_input()`. Use `session.publish_sensor_frame()` only for channels captured simultaneously. Do not schedule future steps or prequeue input batches. Use `RobotLoop` only when your application needs a polling loop and preserve its original real-time interface. Stop and wait for neural state preservation before power-off.
+
+Keep API keys in `.env`, never in Python sources, exported designs or GitHub. The README contains the complete first-time setup.

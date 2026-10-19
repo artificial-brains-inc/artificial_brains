@@ -1,0 +1,91 @@
+ARTIFICIAL BRAINS SOFTWARE DEVELOPMENT KIT
+PROPRIETARY SOFTWARE LICENSE
+Copyright (c) 2026 Artificial Brains. All rights reserved.
+
+IMPORTANT: THIS IS A PROPRIETARY, SOURCE-AVAILABLE LICENSE, NOT AN OPEN-SOURCE LICENSE.
+By downloading, installing, copying, accessing, or using the Artificial Brains SDK
+(the "SDK"), you accept these terms. If you do not accept them, do not use the SDK.
+
+1. LIMITED LICENSE.
+Subject to continuing compliance with these terms, Artificial Brains grants
+you a limited, non-exclusive, non-transferable, non-sublicensable, revocable
+license to download, install, execute, and internally modify the SDK solely to
+develop, simulate, test, compile, deploy, and operate artificial brains and robot
+applications for use with authorized Artificial Brains hardware and services,
+including Prima-Lux. You may use the SDK for personal, academic, and commercial
+development within this permitted scope. Source availability conveys no rights
+beyond those expressly granted here.
+
+2. DEVELOPER-CREATED BRAINS.
+As between you and Artificial Brains, you retain any rights you otherwise own
+in original neural graphs, application code, training or teaching inputs, and
+other independently created content that you develop using the SDK, excluding
+the SDK, its components, and any Artificial Brains software or technology
+embedded in generated artifacts. You may use, share, distribute, license,
+commercialize, or sell your own brains and applications, including compiled
+brains where supported, provided they are developed, deployed, and operated
+only with authorized Artificial Brains hardware and services and recipients
+remain bound by any applicable device and SDK requirements. This permission
+does not grant a license to reproduce or distribute the SDK, hardware firmware,
+embedded runtime, or any other Artificial Brains proprietary component apart
+from its authorized inclusion in a compiled brain for supported hardware.
+
+3. RESTRICTIONS.
+Except where expressly permitted in Section 1 or required by non-waivable law,
+you must not, and must not permit a third party to:
+(a) redistribute, publish, sublicense, sell, rent, lease, loan, host, or offer
+the SDK or a modified version of the SDK as a standalone product or service;
+(b) copy, disclose, or make available SDK source code or non-public components
+to any third party except as explicitly authorized by Artificial Brains;
+(c) reverse engineer, disassemble, decompile, decode, extract, or otherwise
+attempt to discover the internal implementation, algorithms, protected
+formats, or non-public interfaces of the SDK, compiled packages, hardware,
+firmware, or related Artificial Brains systems;
+(d) circumvent or bypass authentication, licensing, digital signatures,
+access controls, device binding, or other technical safeguards;
+(e) modify the SDK to enable unauthorized hardware, or use the SDK or its
+outputs to substitute for or operate a competing brain-runtime platform;
+(f) remove or modify copyright, attribution, trademark, or proprietary notices;
+(g) use the SDK in violation of applicable law or third-party rights.
+
+4. NO OPEN-SOURCE GRANT.
+The SDK is not licensed under an OSI-approved open-source license. No patent,
+trademark, trade-secret, or other intellectual-property rights are granted
+except as explicitly stated. Public access to source code, where provided,
+does not authorize forking, public redistribution, or independent hosting.
+
+5. THIRD-PARTY SOFTWARE.
+Third-party dependencies remain subject to their respective licenses. Nothing
+in these terms modifies those independent licenses.
+
+6. OWNERSHIP AND FEEDBACK.
+Artificial Brains and its licensors retain all rights, title, and interest in
+the SDK, related tooling, documentation, firmware, services, and any copies or
+modifications of those components. Providing ideas or feedback does not transfer
+ownership of your independently created brains or applications.
+
+7. TERMINATION.
+This license terminates automatically upon material breach, subject to any
+mandatory cure rights under applicable law. Upon termination, cease use of the
+SDK and delete unauthorized copies. Rights previously granted to third parties
+in your independently created content remain subject to Section 2 and any
+applicable platform or device terms.
+
+8. WARRANTY DISCLAIMER.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SDK IS PROVIDED "AS IS"
+AND "AS AVAILABLE," WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NONINFRINGEMENT. YOU ARE RESPONSIBLE FOR ROBOT SAFETY, VALIDATING ACTUATION,
+AND COMPLIANCE WITH APPLICABLE REQUIREMENTS.
+
+9. LIMITATION OF LIABILITY.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ARTIFICIAL BRAINS AND ITS
+LICENSORS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL,
+EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, DATA, OR BUSINESS,
+ARISING OUT OF OR RELATING TO THE SDK. NOTHING EXCLUDES LIABILITY THAT CANNOT
+LAWFULLY BE EXCLUDED.
+
+10. CHANGES AND ADDITIONAL RIGHTS.
+Additional distribution rights or licenses require express written permission
+from Artificial Brains. No waiver or modification is effective unless made in
+writing by an authorized representative.

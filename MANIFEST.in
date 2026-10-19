@@ -1,0 +1,10 @@
+include README.md LICENSE
+recursive-include ab *.py
+recursive-include ab_sdk *.py
+prune tests
+prune examples
+global-exclude __pycache__ *.py[cod] .env .env.* *.pem *.key *.token
+
+recursive-include ab_designer *.py *.css *.js *.html *.svg *.png
+
+prune docs

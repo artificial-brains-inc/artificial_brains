@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artificialbrains_sdk"
+version = "0.3.7"
+description = "Artificial Brains SDK for designing and running brains on Prima-Lux"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
+dependencies = [
+  "httpx>=0.25",
+  "cryptography>=41",
+]
+classifiers = ["Programming Language :: Python :: 3"]
+
+[project.scripts]
+ab = "ab.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ab", "ab_sdk", "ab_sdk.maps", "ab_designer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+ab_designer = ["static/*"]

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Artificial Brains — Designer</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="identity" aria-label="Artificial Brains Designer">
+        <img class="brand-logo" src="/artificial-brains-wordmark.svg" alt="Artificial Brains" />
+        <span class="designer-caption">DESIGNER <span class="version">/ 0.3.6</span></span>
+      </div>
+      <nav class="view-switch" role="tablist" aria-label="Editor view">
+        <button class="view-tab active" id="viewCanvas" role="tab" aria-selected="true" aria-controls="editorCanvas">Canvas</button>
+        <button class="view-tab" id="viewPython" role="tab" aria-selected="false" aria-controls="pythonWorkspace">Python</button>
+      </nav>
+      <div class="project-name-area"><span class="overline">Brain name</span><input id="brainName" maxlength="80" value="Untitled Brain" aria-label="Brain name" spellcheck="false" /></div>
+      <div class="header-actions">
+        <span class="local-badge"><span class="status-dot"></span> Local designer</span>
+        <button class="button-quiet" id="newBtn" title="Create a blank brain">New</button>
+        <button class="button-quiet" id="openBtn" title="Open saved brain design">Open</button>
+        <input id="openFile" type="file" accept=".json,.abdesign.json,application/json" hidden />
+        <button class="button-primary" id="saveBtn" title="Download brain design">Save brain <span aria-hidden="true">↗</span></button>
+      </div>
+    </header>
+
+    <div class="device-bar" aria-label="Prima-Lux controls">
+      <div class="device-state"><span class="device-indicator" id="deviceIndicator"></span><strong id="deviceStatus">Prima-Lux · Not connected</strong></div>
+      <div class="device-actions">
+        <button class="button-quiet" id="deviceRefresh" title="Check device status">Refresh</button>
+        <button class="button-primary" id="deviceBuild" title="Build and install this brain on Prima-Lux">Build brain</button>
+        <button class="button-outline" id="deviceRun" title="Start the installed neural brain (application input remains separate)" disabled>Run brain</button>
+        <button class="button-quiet" id="deviceStop" title="Stop and save neural state" disabled>Stop brain</button>
+      </div>
+    </div>
+    <div class="workspace canvas-mode" id="workspace">
+      <aside class="leftbar">
+        <div class="sidebar-intro"><div class="overline">YOUR WORKSPACE</div><h1>Build a brain.</h1><p>Add neural populations, then connect them to create useful operations.</p></div>
+        <div class="divider"></div>
+        <div class="overline section-label">01 / ADD</div>
+        <button class="add-item" id="addInput"><span class="add-icon input-icon">I</span><span><b>Input</b><small>Bring information in</small></span><strong>+</strong></button>
+        <button class="add-item" id="addOpu"><span class="add-icon opu-icon">O</span><span><b>OPU</b><small>Neural population</small></span><strong>+</strong></button>
+        <button class="add-item" id="addOutput"><span class="add-icon output-icon">↗</span><span><b>Output</b><small>Read a neural result</small></span><strong>+</strong></button>
+        <div class="divider"></div>
+        <div class="overline section-label">02 / CONNECT</div>
+        <button class="connection-tool" id="connectBtn"><span class="link-icon">↗</span><span><b>Connect OPUs</b><small>Choose a source, then a target</small></span></button>
+        <p class="hint">Drag empty canvas to move the whole graph. Drag a population to move it individually. Connections are excitatory by default.</p>
+        <div class="divider"></div>
+        <div class="overline section-label">03 / ORGANIZE</div>
+        <button class="small-action" id="arrangeBtn"><span>▦</span> Arrange nodes</button>
+        <button class="small-action" id="centerBtn"><span>⊙</span> Center view</button>
+        <div class="sidebar-bottom"><span class="tiny-label">BUILD AND EXPLORE</span><p>Design without a device. Connect Prima-Lux when you are ready to build or run.</p></div>
+      </aside>
+
+      <main class="editor-area" id="editorCanvas">
+        <div class="editor-toolbar">
+          <div class="toolbar-label"><span class="tab-indicator"></span><strong>Brain canvas</strong><span id="draftStatus" class="muted">Ready</span></div>
+          <div class="toolbar-actions"><span id="connectingStatus" class="connection-status" aria-live="polite"></span>
+            <button class="icon-button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+            <button class="icon-button" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+            <div class="toolbar-separator"></div>
+            <button class="zoom-btn" id="zoomOut" title="Zoom out">−</button><span id="zoomLabel" class="zoom-label">100%</span><button class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="canvas-frame"><div class="canvas-viewport" id="viewport" tabindex="0" aria-label="Editable brain design canvas">
+          <div id="stageShell" class="stage-shell"><div class="stage" id="stage"><svg id="edgeLayer" class="edge-layer" viewBox="0 0 2600 1800" aria-label="Connections"><defs><marker id="excArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#2ea8c8"></path></marker></defs></svg><div id="nodesLayer" class="nodes-layer"></div><div id="wirePreview" class="wire-preview" hidden></div></div></div>
+        </div>
+        <div id="emptyState" class="empty-state"><div class="empty-glyph">◎</div><h2>Every brain begins with a connection.</h2><p>Add an OPU and an input, or start with a simple three-OPU pathway.</p><div class="empty-actions"><button id="emptyAddBtn" class="button-primary">Add an OPU</button><button id="starterBtn" class="button-outline">Try a starter brain</button></div></div></div>
+        <div class="editor-statusbar"><span id="stats">0 populations · 0 connections</span><span>Drag to move · Drag from <strong>●</strong> to connect · Select a node to edit</span></div>
+      </main>
+
+      <aside class="rightbar">
+        <div class="properties-header"><span class="overline">CANVAS / INSPECTOR</span><strong>Properties</strong></div>
+        <section id="propertiesPanel" class="panel-content">
+          <div class="inspector-heading"><div class="overline">SELECTED ITEM</div><h2 id="inspectorTitle">Brain overview</h2><p id="inspectorSubtitle">Select a population or connection to edit its details.</p></div>
+          <div id="inspectorFields" class="inspector-fields"></div>
+          <div class="divider"></div><div class="overline section-label">DESIGN CHECKS</div><div id="warningsList" class="warning-list"></div>
+        </section>
+        <div class="rightbar-footer"><button class="footer-action" id="exportSvg">↓ Export SVG diagram</button></div>
+      </aside>
+      <section id="pythonWorkspace" class="python-workspace" role="tabpanel" aria-labelledby="viewPython" hidden>
+        <div class="python-toolbar">
+          <div class="python-heading"><span class="overline">BRAIN / CODE</span><h1>Python</h1><p>Write your brain using the same inputs, OPUs and connections as Canvas.</p></div>
+          <div class="python-actions">
+            <span id="pythonStatus" class="python-status" role="status" aria-live="polite">Synced with Canvas</span>
+            <button id="revertCode" class="button-outline" title="Discard unapplied Python edits">Revert</button>
+            <button id="downloadPython" class="button-outline">↓ Download Python</button>
+            <button id="applyCode" class="button-primary" title="Apply these Python edits to the brain">Apply changes</button>
+          </div>
+        </div>
+        <div class="python-editor-wrap">
+          <label for="codeEditor" class="sr-only">Brain Python code</label>
+          <textarea spellcheck="false" id="codeEditor" aria-label="Brain Python code" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+        </div>
+        <div class="python-bottom">
+          <span class="python-help">Use <code>brain.input()</code>, <code>brain.opu()</code>, <code>brain.output()</code> and <code>brain.connect()</code>. Your Python is checked, not executed.</span>
+          <span class="shortcut-hint">Ctrl+Enter to apply</span>
+        </div>
+        <div id="codeError" class="code-error" role="alert" hidden></div>
+      </section>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+</body>
+</html>
