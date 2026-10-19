@@ -108,7 +108,7 @@ Its **Build brain**, **Run brain**, and **Stop brain** controls operate the conn
 Complete the initial Prima-Lux or ABi onboarding, obtain your developer API key, and connect your computer to the device. Create a `.env` file in your project:
 
 ```dotenv
-AB_DEVICE_URL=http://10.42.0.2:8080
+AB_DEVICE_URL=http://prima-lux.local:8080/
 AB_DEVICE_API_KEY=YOUR_DEVICE_API_KEY
 ```
 
