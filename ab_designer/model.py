@@ -1,7 +1,3 @@
-"""Public, non-executable brain-design model.
-
-There is deliberately no neuron simulation, physical graph or hardware data here.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -16,18 +12,16 @@ RHYTHMS = ("high-gamma", "gamma", "beta", "alpha", "theta", "delta")
 HIGH_GAMMA = "high-gamma"
 EDGE_KINDS = ("exc", "inh")
 NODE_KINDS = ("input", "opu", "output")
-MAX_NODES = 256
-MAX_EDGES = 512
 MAX_INPUT_NEURONS = 498  # Per-sensor contract supported on the current Prima-Lux.
 
-# Advisory ranges in the current rhythm design guide. Not a device acceptance test.
+# Recommended maximum per input, using the receiving rhythm (also through high-gamma).
 # Do not infer the size of a receiving OPU from its input size in this public module.
 SUGGESTED_DIRECT_INPUT_MAX = {
-    "gamma": 57,
-    "beta": 339,
-    "alpha": 396,
-    "theta": 1414,
-    "delta": 4524,
+    "gamma": 6,
+    "beta": 37,
+    "alpha": 44,
+    "theta": 156,
+    "delta": 498,
 }
 
 
@@ -55,7 +49,7 @@ def _tnorm(value: Any) -> float:
 
 def _neurons(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_INPUT_NEURONS:
-        raise DesignError(f"Input size must be a positive integer (maximum {MAX_INPUT_NEURONS:,} for file safety).")
+        raise DesignError(f"Input size must be a positive integer (maximum {MAX_INPUT_NEURONS:,} per input on the current Prima-Lux).")
     return value
 
 
@@ -81,7 +75,7 @@ def _output_neurons(value: Any) -> int:
 def _position(value: Any, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise DesignError(f"{name} position must be a finite number.")
-    if not 0 <= value <= 100000:
+    if value < 0:
         raise DesignError(f"{name} position is outside the editing area.")
     return round(float(value), 1)
 
@@ -150,7 +144,7 @@ def _edge(data: Any, index: int, by_name: dict) -> dict:
         result["role"] = role
     if "units" in data:
         units = data["units"]
-        if role != "operand" or type(units) not in (int,float) or not math.isfinite(units) or units <= 0:
+        if role != "operand" or type(units) not in (int, float) or not math.isfinite(units) or units <= 0:
             raise DesignError("Positive units require an operand connection.")
         result["units"] = float(units)
     return result
@@ -168,8 +162,6 @@ def normalize(data: Any) -> dict:
     edges = data.get("connections", [])
     if not isinstance(nodes, list) or not isinstance(edges, list):
         raise DesignError("Nodes and connections must be lists.")
-    if len(nodes) > MAX_NODES or len(edges) > MAX_EDGES:
-        raise DesignError(f"Design exceeds the editor safety limit ({MAX_NODES} nodes, {MAX_EDGES} connections).")
     normalized_nodes = [_node(node, i) for i, node in enumerate(nodes)]
     by_name = {}
     for node in normalized_nodes:
@@ -177,14 +169,6 @@ def normalize(data: Any) -> dict:
             raise DesignError(f"Duplicate node name: {node['name']}.")
         by_name[node["name"]] = node
     normalized_edges = [_edge(edge, i, by_name) for i, edge in enumerate(edges)]
-    for target in normalized_nodes:
-        if target["kind"] != "opu" or target["rhythm"] == HIGH_GAMMA:
-            continue
-        N = sum(by_name[e["from"]]["neurons"] for e in normalized_edges
-                if e["to"] == target["name"] and e["type"] == "exc"
-                and by_name[e["from"]]["kind"] == "input")
-        if N > SUGGESTED_DIRECT_INPUT_MAX[target["rhythm"]]:
-            raise DesignError(f"{target['name']} has too many direct input neurons for its rhythm.")
     seen = set()
     for edge in normalized_edges:
         identity = (edge["from"], edge["to"])
@@ -210,14 +194,28 @@ def inspect_design(data: dict) -> list[str]:
             messages.append(f"OPU {node['name']} has no incoming connection.")
         if node["kind"] == "opu" and node["rhythm"] != HIGH_GAMMA and node.get("tnorm") in (0, 10):
             messages.append(f"{node['name']} uses TNorm {node['tnorm']:g}, an operating boundary; test its behavior carefully.")
-        if node["kind"] == "opu" and node["rhythm"] != HIGH_GAMMA:
-            direct_inputs = [by_name[e["from"]]["neurons"] for e in inc if by_name[e["from"]]["kind"] == "input"]
-            if direct_inputs and sum(direct_inputs) > SUGGESTED_DIRECT_INPUT_MAX[node["rhythm"]]:
-                messages.append(
-                    f"Direct inputs to {node['name']} total {sum(direct_inputs):,}, above the "
-                    f"current {node['rhythm']} practical input guideline. Receiving activity may saturate; "
-                    "actual feasibility is checked when the brain is built."
-                )
+        if node["kind"] == "input":
+            pending = [e["to"] for e in out]
+            visited = set()
+            while pending:
+                name = pending.pop()
+                if name in visited:
+                    continue
+                visited.add(name)
+                target = by_name[name]
+                if target["kind"] != "opu":
+                    continue
+                if target["rhythm"] == HIGH_GAMMA:
+                    pending.extend(e["to"] for e in edges if e["from"] == name)
+                    continue
+                limit = SUGGESTED_DIRECT_INPUT_MAX[target["rhythm"]]
+                if node["neurons"] > limit:
+                    messages.append(
+                        f"Input {node['name']} has {node['neurons']:,} neurons; "
+                        f"the recommended maximum per input for {target['name']} "
+                        f"({target['rhythm']}) is {limit:,}. "
+                        "Receiving activity may saturate."
+                    )
     if data["nodes"] and not any(n["kind"] == "output" for n in data["nodes"]):
         messages.append("No named output has been added yet.")
     return messages
@@ -259,8 +257,10 @@ class Brain:
         edge = {"from": source, "to": target, "type": connection}
         if strength is not None:
             edge["strength"] = strength
-        if role is not None: edge["role"] = role
-        if units is not None: edge["units"] = units
+        if role is not None:
+            edge["role"] = role
+        if units is not None:
+            edge["units"] = units
         d["connections"].append(edge)
         self._data = normalize(d)
         return self
