@@ -89,7 +89,8 @@ def main(argv=None) -> int:
     build.add_argument('--project',default='.')
     build.add_argument('--brain',help='Python or Brain-design file')
     build.add_argument('--env')
-    build.add_argument('--timeout',type=float,default=240.0)
+    build.add_argument('--timeout',type=float,default=None,
+                       help='Optional total wait in seconds; by default wait for completion.')
     run=subs.add_parser('run',help='Start the installed brain and your application')
     run.add_argument('--project',default='.')
     run.add_argument('--env')

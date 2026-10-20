@@ -11,6 +11,8 @@ import json
 import re
 import time
 from pathlib import Path
+import httpx
+
 
 from ab_designer import Brain
 from ab_designer.code import parse_python
@@ -90,48 +92,70 @@ def _require_build_ready(result: dict, expected_hash: str) -> bool:
     return bool(result.get('status') == 'READY' and result.get('installed') is True)
 
 
-def build_on_device(device: PrimaLuxClient, brain: Brain, *, timeout: float = 240.0,
+def build_on_device(device: PrimaLuxClient, brain: Brain, *, timeout: float | None = None,
                     poll_interval: float = .5) -> dict:
-    """Transmit only the developer's design to Prima-Lux.
 
-    Prima-Lux is the only caller of the cloud build service. Compiled packages
-    are delivered directly to the device; the SDK sees only design/status.
-    """
-    if timeout <= 0 or poll_interval <= 0:
+    if (timeout is not None and timeout <= 0) or poll_interval <= 0:
         raise ValueError('Timeouts must be positive.')
     design = semantic_design(brain)
     body = _canonical(design)
     if len(body) > MAX_PUBLIC_DESIGN_BYTES:
         raise ValueError('Brain design exceeds the maximum supported size.')
     digest = hashlib.sha256(body).hexdigest()
+    deadline = time.monotonic() + timeout if timeout is not None else float('inf')
+
+    def request(method, path, **kwargs):
+        # A lost HTTP response does not cancel the device-owned build.
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PrimaLuxError(
+                    'Stopped waiting for Prima-Lux. The build may still be running; '
+                    'repeat the same build command to reconnect.'
+                )
+            try:
+                return device._request(method, path, timeout=min(60.0, remaining), **kwargs)
+            except PrimaLuxError as exc:
+                if not isinstance(exc.__cause__, (
+                        httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)):
+                    raise
+                if method == 'POST':
+                    # Factory 0.6.10 reconnects even if this build just finished.
+                    kwargs['headers'] = {'X-PrimaLux-Resume-Build': '1'}
+                time.sleep(min(max(1.0, poll_interval), max(0.0, deadline-time.monotonic())))
+
     try:
-        answer = device._request('POST', '/api/brain/build', json={
+        answer = request('POST', '/api/brain/build', json={
             'design': design, 'design_sha256': digest,
-        }, timeout=20.0)
+        })
     except PrimaLuxError as exc:
         if 'HTTP 404' in str(exc) or 'HTTP 405' in str(exc):
             raise PrimaLuxError('Prima-Lux Device Manager update required for Brain builds.') from exc
         raise
     if _require_build_ready(answer, digest):
-        status = device.status()
+        status = request('GET', '/api/status')
         engine = status.get('engine') or {}
         if not (engine.get('state') == 'READY' and engine.get('has_brain') is True
-                and not (status.get('package') or {}).get('pending')):
+                and not (status.get('package') or {}).get('pending')
+                and ((status.get('package') or {}).get('active') or {}).get('design_sha256') == digest):
             raise PrimaLuxError('Brain build completed but Prima-Lux has not confirmed READY.')
         return {'status': 'READY', 'design_sha256': digest, 'device_ready': True}
     build_id = answer.get('build_id')
     if not answer.get('accepted') or not isinstance(build_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,100}', build_id):
         raise PrimaLuxError('Device did not accept the brain build request.')
-    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = device._request('GET', f'/api/brain/build/{build_id}')
+        result = request('GET', f'/api/brain/build/{build_id}')
         if _require_build_ready(result, digest):
-            status = device.status()
+            status = request('GET', '/api/status')
             engine = status.get('engine') or {}
             if (engine.get('state') == 'READY' and engine.get('has_brain') is True
-                    and not (status.get('package') or {}).get('pending')):
+                    and not (status.get('package') or {}).get('pending')
+                    and ((status.get('package') or {}).get('active') or {}).get('design_sha256') == digest):
                 return {'status':'READY','design_sha256':digest,'device_ready':True,
                         'device_id':status.get('device_id')}
             raise PrimaLuxError('Brain build completed but device has not confirmed READY.')
         time.sleep(min(poll_interval, max(0, deadline-time.monotonic())))
-    raise PrimaLuxError('Timed out waiting for Prima-Lux to finish preparing the brain.')
+    raise PrimaLuxError(
+        'Stopped waiting for Prima-Lux. The build may still be running; '
+        'repeat the same build command to reconnect.'
+    )
