@@ -93,7 +93,8 @@ class PrimaLuxABClient:
             raise PrimaLuxError('Brain input/output names are missing. Save a Brain design in this project.')
         engine = status.get('engine') or {}
         session = self.device.start_session(contract, config=config,
-                                            start_brain=engine.get('state') != 'RUNNING')
+                                            start_brain=engine.get('state') != 'RUNNING',
+                                            telemetry_design=design.to_dict() if design is not None else None)
         # Guard only: underlying frame/event transport is unchanged. Do not
         # invent simulation-style step scheduling when hardware lacks it.
         session.input_client = _NoRetimingTransport(session.input_client)

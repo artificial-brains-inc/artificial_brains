@@ -260,9 +260,52 @@ print(encoded.target, encoded.payload, encoded.meta)
 
 `session.encoder` is the session's configured `SpikeEncoder`; it already knows the Brain's input map.
 
+
+### Live neuron telemetry
+
+To see individual neurons firing while your application runs, add this to your project’s `.env`:
+
+```dotenv
+AB_TELEMETRY=true
+```
+
+The SDK opens a telemetry window when your application starts its Prima-Lux session.
+
+Each dot represents one neuron: bright means firing in the displayed timestep; dark means inactive. Select an OPU to inspect its neurons and firing history, with one row per neuron. Input stimulation is displayed separately from neural firing.
+
+You can pan, zoom, and freeze the view. **Freeze view pauses only the display; the Brain and controller continue running.**
+
+Set `AB_TELEMETRY=false`, or omit it, to disable the viewer. Output streaming works independently of this setting.
+
+This feature requires the updated SDK and Prima-Lux software with neuron telemetry support.
+
+
 ## 6. Decode neural outputs into actions
 
 Outputs are **neural signals**, not robot motor instructions. You decide how to interpret them and which physical actuator limits to apply. Choose the decoder according to the output event representation.
+
+### Live output streaming
+
+Prima-Lux and ABi push neural outputs to the SDK through a continuous connection. Your application does not need to repeatedly request them.
+
+**Every completed timestep is delivered, including unchanged output states and timesteps with no active outputs.** Bistable outputs remain active until the Brain switches them off, so the same active output can appear in successive timesteps.
+
+Use the existing output callback:
+
+```python
+def handle_output(event):
+    print("Step:", event["step"])
+    print("Outputs:", event["outputs"])
+
+session.on_output(handle_output)
+```
+
+For motor control, continue using a decoder with `session.on_command(...)` or `RobotLoop`, as shown below.
+
+Output delivery is independent of sensor polling. `RobotLoop.tick_hz` controls how often your application reads sensors; it does not control when neural outputs arrive.
+
+If the connection is interrupted, the SDK attempts to resume from the last received frame while the device’s retained history is available. It reports missing history or a changed Brain run explicitly rather than silently skipping frames. Start a fresh session after resetting neural dynamics.
+
 
 ### Actuation-channel outputs
 

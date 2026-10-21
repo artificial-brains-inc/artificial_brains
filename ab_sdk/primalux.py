@@ -55,6 +55,7 @@ class PrimaLuxConfig:
     output_poll_interval: float = 0.05
     # Accepted for configuration compatibility; input delivery is immediate.
     sensor_flush_interval: float | None = None
+    telemetry: bool = False
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = '.env') -> 'PrimaLuxConfig':
@@ -73,6 +74,7 @@ class PrimaLuxConfig:
             contract_path=Path(path).expanduser() if path else None,
             timeout=float(os.getenv('AB_DEVICE_TIMEOUT', '15')),
             output_poll_interval=float(os.getenv('AB_DEVICE_OUTPUT_POLL_INTERVAL', '0.05')),
+            telemetry=os.getenv('AB_TELEMETRY', '').strip().lower() in ('1', 'true', 'yes', 'on'),
             sensor_flush_interval=(float(os.environ['AB_DEVICE_SENSOR_FLUSH_INTERVAL'])
                                    if 'AB_DEVICE_SENSOR_FLUSH_INTERVAL' in os.environ else None),
         )
@@ -269,7 +271,7 @@ class PrimaLuxClient:
 
     def start_session(self, contract: Mapping[str, Any] | None = None, *,
                       config: PrimaLuxConfig | None = None, start_brain: bool = False,
-                      decoder: Any = None) -> 'PrimaLuxSession':
+                      decoder: Any = None, telemetry_design: dict | None = None) -> 'PrimaLuxSession':
         """Reuse RealtimeSession/RobotLoop/SpikeEncoder with a hardware transport.
 
         Contract must be the installed ABP's I/O mapping (not an unrelated sim graph).
@@ -311,9 +313,18 @@ class PrimaLuxClient:
             config=SessionConfig(telemetry=False, poll_interval=poll, output_limit=100,
                                  checkpoint_every_ticks=0, output_telemetry=False),
         )
+        from .live import LiveOutputStream, TelemetryWindow
+        session.output_stream = LiveOutputStream(transport, replay=start_brain)
+        session.output_stream.on_item(session._dispatch_output)
+        session.output_stream.on_control(session._dispatch_control)
         if decoder is not None:
             session.set_decoder(decoder)
         session.start_output_stream()
+        if config and config.telemetry:
+            try:
+                session._telemetry_window = TelemetryWindow(self, telemetry_design)
+            except Exception as exc:
+                warnings.warn(f'Neuron telemetry window unavailable: {type(exc).__name__}', RuntimeWarning)
         return session
 
 
@@ -499,6 +510,17 @@ class PrimaLuxSession(RealtimeSession):
             # A failing native Stop must not strand the output polling thread.
             self.output_stream.stop()
             self.python_client.close()
+            window = getattr(self, '_telemetry_window', None)
+            if window is not None:
+                window.close()
+
+    def close_from_runtime(self, *, notify_node: bool = True) -> None:
+        try:
+            super().close_from_runtime(notify_node=notify_node)
+        finally:
+            window = getattr(self, '_telemetry_window', None)
+            if window is not None:
+                window.close()
 
 
 class ActuationChannelDecoder:
