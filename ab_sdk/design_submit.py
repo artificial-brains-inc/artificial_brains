@@ -18,6 +18,12 @@ from ab_designer import Brain
 from ab_designer.code import parse_python
 
 from .primalux import PrimaLuxClient, PrimaLuxError
+from .build_feedback import sanitize, describe
+
+
+class BrainBuildError(PrimaLuxError):
+    """Only allowlisted public graph diagnostics are displayed by the Canvas."""
+    pass
 
 MAX_PUBLIC_DESIGN_BYTES = 1024 * 1024
 
@@ -88,6 +94,9 @@ def _require_build_ready(result: dict, expected_hash: str) -> bool:
     if not isinstance(result, dict) or result.get('design_sha256') != expected_hash:
         raise PrimaLuxError('Device did not confirm the requested brain design.')
     if result.get('failed') or result.get('status') in ('ERROR', 'FAILED'):
+        feedback = sanitize(result.get('build_feedback'), expected_hash)
+        if feedback and feedback['code'] != 'CONSTRUCTION_OK':
+            raise BrainBuildError(describe(feedback))
         raise PrimaLuxError('Brain could not be prepared. Check the device status.')
     return bool(result.get('status') == 'READY' and result.get('installed') is True)
 

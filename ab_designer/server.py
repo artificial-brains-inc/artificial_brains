@@ -253,9 +253,11 @@ class DesignerHandler(BaseHTTPRequestHandler):
                 'Prima-Lux did not confirm RUNNING',
                 'Stop was not confirmed',
             )
-            if not any(message.startswith(prefix) for prefix in public_errors):
+            from ab_sdk.design_submit import BrainBuildError
+            public_build_error = isinstance(exc, BrainBuildError)
+            if not public_build_error and not any(message.startswith(prefix) for prefix in public_errors):
                 message = 'Prima-Lux could not complete this operation. Check the device and try again.'
-            self._json({'error': message[:250]}, 409)
+            self._json({'error': message[:2048] if public_build_error else message[:250]}, 409)
         finally:
             self.server.building = False
             self.server.device_lock.release()
