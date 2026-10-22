@@ -44,7 +44,7 @@ brain = Brain("First Brain")
 # Named external input populations
 brain.input("SENSE", 64)
 
-# OPUs: rhythm and, where applicable, TNorm
+# OPUs: rhythm and TNorm
 brain.opu("SENSE_RELAY", "high-gamma")
 brain.opu("T1", "theta", 3)
 brain.opu("T2", "theta", 2.01)
@@ -77,19 +77,126 @@ python brain.py
 | `Brain("Name")` | Creates a named Artificial Brain design. |
 | `brain.input("NAME", n)` | Declares an external input population with `n` neurons. |
 | `brain.opu("NAME", "theta", 2.01)` | Adds an OPU with a rhythm and TNorm. |
-| `brain.opu("RELAY", "high-gamma")` | Adds an input-adjacent high-gamma relay, without TNorm. |
+| `brain.opu("RELAY", "high-gamma", 10)` | Adds a high-gamma OPU anywhere in the circuit, with TNorm. |
 | `brain.output("NAME")` | Adds a named, one-neuron output. |
 | `brain.output("NAME", 4)` | Adds a named output with four neurons. |
 | `brain.connect("A", "B")` | Connects A to B (excitatory by default). |
 | `brain.connect("A", "B", "inh")` | Adds an inhibitory connection. |
+| `brain.connect("A", "B", "inh", strength=0.9)` | Scales the calculated inhibitory reference by 0.9. |
+| `brain.connect("A", "B", role="operand", units=2)` | Declares two positive operand units for an operation. |
+| `brain.connect("A", "B", role="feedback")` | Identifies a feedback return to an OPU. |
 | `brain.save("brain.abdesign.json")` | Saves the editable Brain design. |
 | `Brain.load("brain.abdesign.json")` | Opens a saved design from Python. |
 | `brain.validate()` | Returns design warnings you can review. |
 | `brain.render()` | Opens the visual Brain editor. |
 
-OPUs can use **high-gamma, gamma, beta, alpha, theta, or delta**. Rhythmic OPUs take a TNorm from 0 to 10; decimal values such as `2.01` are valid. High-gamma is a fast relay immediately after an external input and does not take a TNorm. All connections are excitatory unless you explicitly choose inhibition. Output neurons hold their state until the Brain clears them.
+OPUs can use **high-gamma, gamma, beta, alpha, theta, or delta**. All rhythms accept TNorm from 0 to 10, with up to two decimal places; values such as `2.01` are valid. High-gamma can appear throughout the circuit, including internal and feedback paths. Omitting its TNorm preserves the default reference at 10. Other rhythms require a TNorm. All connections are excitatory unless you explicitly choose inhibition. Output neurons are bistable and hold their state until the Brain clears them.
 
 Choose input population widths to match the sensory encoding that your application will publish. Choose output widths to match the way your application will decode the result.
+
+### Choose input widths and operating points
+
+The current per-input contract is 1–498 neurons. The guide recommends these maxima according to the receiving rhythm, to avoid saturation:
+
+| Receiving rhythm | Recommended maximum neurons per input |
+| --- | --- |
+| Gamma | 6 |
+| Beta | 37 |
+| Alpha | 44 |
+| Theta | 156 |
+| Delta | 498 |
+
+For input → high-gamma → theta, use the theta recommendation of 156. If the input branches, consider all of its receiving pathways. An input's width does not specify the receiving OPU's size. Prima-Lux's 10,000-neuron capacity is a physical neuron budget; counting Canvas boxes or graph connections does not calculate that allocation. Additional relays and helper OPUs use neurons too.
+
+TNorm selects an operating point. It is not a connection weight, an inhibition percentage, a fuzzy degree, or a motor gain. TNorm 0 is not OFF, and 10 is not automatically better. Preserve values such as `2.01` exactly.
+
+### Connections, operand units, and feedback
+
+Use `role="operand"` for each contribution to a mathematical operation and `units` for its relative amount. A canonical unit is an equal mathematical contribution at the receiving operation; it is not one neuron or a raw synaptic weight. Mark every operand, including positive terms:
+
+```python
+# A, B, and RESULT are existing populations.
+brain.connect("A", "RESULT", role="operand", units=1)
+brain.connect("B", "RESULT", "inh", role="operand", units=1)
+```
+
+Units are positive; `"inh"` supplies the negative sign. Use `units=0.5` for a half-unit contribution and `units=2` for two units. Physical calculations remain in the build service.
+
+Inhibitory `strength` is a multiplier of the calculated reference, defaulting to 1. It accepts any finite number of at least 0.1, with no upper cap. Omit the connection for zero inhibition:
+
+```python
+brain.connect("STOP", "MOTOR_STATE", "inh", strength=0.9)
+```
+
+This does not guarantee that 90% of the receiving neurons stop firing. It is not the booklet's source-and-target-dependent M90 suppression reference. Keep arithmetic cancellation at the recipe's signed units and default strength. Choose veto/reset inhibition for its separate suppression role.
+
+For a return to an earlier OPU, identify feedback explicitly:
+
+```python
+brain.connect("MEMORY_RETURN", "ASSOCIATION", role="feedback")
+```
+
+`role` requires an OPU target, and `units` requires `role="operand"`. To clear a bistable output, connect an inhibitory source to that output without adding an OPU-only role. An output may feed back through an OPU.
+
+### Compose operations from their immediate sources
+
+Use the state of the population directly feeding each new operation. A later stage is not receiving the original sensor unchanged.
+
+When several OPUs excite one gamma, beta, alpha, theta, or delta receiver, use a common rhythm for its immediate sources. For arithmetic operands with different rhythms, give each operand its own one-source relay in the chosen operator rhythm and TNorm, then create a separate receiving operator. The relay is not the operator, even if both have the same rhythm and TNorm. This guidance does not restrict high-gamma placement; vetoes and feedback returns have different roles from arithmetic operands.
+
+| Operation | Excitatory operand units | Inhibitory operand units | Receiving target |
+| --- | --- | --- | --- |
+| OR | A: 1, B: 1 | None | Beta T5 or Theta T5 |
+| AND | A: 1, B: 1 | Local OR: 1 | Delta T2 |
+| XOR | OR: 2 | A: 1, B: 1 | Alpha T5 |
+| NOT | Active REF: 1 | A: 1 | Theta T5 |
+| NOR | Active REF: 1 | OR: 1 | Beta T5 |
+| A greater than B | A: 1 | B: 1 | Theta T2 |
+| B greater than A | B: 1 | A: 1 | Theta T2 |
+
+NOT needs an active reference. Silence does not provide positive evidence by itself. For AND, retain a local Delta T2 OR helper and a separate Delta T2 AND target fed by Delta T2 operands. The negative OR term is cancellation, not a hard veto. XOR needs **two** units of OR.
+
+ADD and SUB can retain earlier activity. Use settling or a local clearing/canonicalization stage when each operation must start fresh. Do not reset the whole brain after every observation by default.
+
+### Fuzzy values and shallow decision rules
+
+A reusable fuzzy value is an **ordered bank of Boolean neural conditions**, from the lowest threshold to the highest. For an eight-position example, `11000000` describes 0.25 and `11111100` describes 0.75. The bank width follows the needed resolution; eight is not a fixed limit.
+
+- Fuzzy OR applies ordinary OR to matching positions, with Beta T5 or Theta T5 targets.
+- Fuzzy NOT reverses the positions, then applies NOT with an active reference, starting at Theta T5.
+- Fuzzy AND uses Delta T2 operands, a local Delta T2 OR helper, and a separate Delta T2 AND target at every position. The helper inhibits the target by one operand unit. Do not substitute a standalone beta OR through a beta-to-delta relay or the half-unit coincidence motif for this construction.
+
+Carry the complete bank into later fuzzy operations. Read its pattern across receiving-rhythm cycles, especially for Delta, rather than from a single frame. TNorm, a fractional edge, or average OPU firing is not a replacement fuzzy representation.
+
+These operations consume internal proposition populations supplied by preceding neural primitives. They do not require one controller-computed external input per threshold. `brain.connect()` connects named populations; it does not select input-neuron indices.
+
+Use a **shallow decision nucleus** when local conditions support or oppose candidate actions. Two compatible conditions can each contribute `units=0.5` to a Delta T2 coincidence rule. This is a rule motif, not a fuzzy value of 0.5 or a substitute for reusable fuzzy AND. A positive condition plus inhibitory veto can express a local “A unless B” rule without a separate NOT/AND tree.
+
+For each candidate, route matching body effects as agreement and opposing effects as signed contradiction to that same candidate, using the same body context. Contradiction uses arithmetic operand units, not automatic hard-veto suppression. Independent motor channels can act together; competition should follow physical antagonists.
+
+Keep neural comparisons, fuzzy composition, agreement/contradiction, and action selection inside the brain. The application acquires and encodes observations and translates outputs to body commands. Do not replace the neural computation with Python-side error subtraction, fuzzy-rule evaluation, candidate normalization, or action argmax.
+
+### Motor output lifetime and memory
+
+The starting motor chain is **Theta T3 → Theta T2.01 → Beta T5 → output**. A reset branch can use motor Beta T5 → reset Beta T3, which inhibits the internal Theta T2.01. For continuous re-evaluation, the reset beta also inhibits the bistable output. Clearing only the internal OPU can leave an old output command active. For deliberate hold-until-cleared behavior, retain the latch and provide its intended clearing path.
+
+Fast motor beta can inhibit an antagonist's Theta T2.01 and clear the antagonist output. Avoid making unrelated joints compete merely because they share a decision circuit.
+
+For association, two or more Beta T5 streams can feed Delta T2. The guide expands the recurrent memory path through distinct Delta T2 and Alpha T5 populations, returning to the same association OPU with `role="feedback"`. Look at which neurons participate as cues change; persistent firing alone is not a complete description of memory.
+
+An ACK also remains a bistable output. Make it brief through its clearing circuit: ACK input → high-gamma relay → ACK output → separate high-gamma reset → inhibitory return to ACK. A repeated held ACK in successive frames is not a new acknowledgement, and ACK does not mean all neural processing has completed.
+
+### Python generators and the Canvas editor
+
+The Canvas Python editor and `ab build brain --brain brain.py` read literal Brain declarations without executing arbitrary Python. For a graph generated with loops, variables, or helper functions, run the script first and build its saved JSON:
+
+```bash
+python make_brain.py
+ab build brain --brain brain.abdesign.json --env .env
+```
+
+Use the **Introductory Guide to Building an Artificial Brain, version 0.4** for expanded construction recipes and code blocks. `brain.validate()` returns structural and advisory warnings; inspect actual neuron activity through telemetry as you compose the circuit.
+
 
 ### Build visually with Canvas or Python
 
@@ -129,7 +236,7 @@ From the project directory:
 ab build brain --brain brain.abdesign.json --env .env
 ```
 
-You may also build directly from a Python Artificial Brain design:
+For a Python design made of literal Brain declarations, you may also build directly:
 
 ```bash
 ab build brain --brain brain.py --env .env
@@ -546,7 +653,7 @@ An Artificial Brain's saved neural state and your robot's environment are separa
 
 ## Guidance for development agents
 
-When an AI coding agent or another developer helps build your robot application, give it the "Introductory Guide to Building an Artificial Brain" and this README. The important integration rules are:
+When an AI coding agent or another developer helps build your robot application, give it the "Introductory Guide to Building an Artificial Brain" and this README. Use the construction recipes above and the expanded guide for the neural graph. The important integration rules are:
 
 1. Use `from ab import Brain` to define inputs, OPUs, connections, and outputs. Keep the design in a saved `brain.abdesign.json` or Python source file.
 2. Match every sensor and output name in application code to the installed Brain's input/output contract.
@@ -556,7 +663,7 @@ When an AI coding agent or another developer helps build your robot application,
 6. Test the actuator command handler and its physical limits independently.
 7. Stop the session and wait for neural-state saving before disconnecting the device.
 
-See [AGENTS.md](AGENTS.md) for a shorter agent-facing checklist.
+See [AGENTS.md](AGENTS.md) for agent-facing construction and integration instructions.
 
 ## Next steps
 
