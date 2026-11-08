@@ -107,6 +107,9 @@ def build_on_device(device: PrimaLuxClient, brain: Brain, *, timeout: float | No
     if (timeout is not None and timeout <= 0) or poll_interval <= 0:
         raise ValueError('Timeouts must be positive.')
     design = semantic_design(brain)
+    for edge in design['connections']:
+        if edge.get('rule') in ('STDP3', 'STDP3_SLOW') and 'reward' not in edge:
+            raise ValueError(f"{edge['from']} → {edge['to']}: select a dopaminergic reward source before building.")
     body = _canonical(design)
     if len(body) > MAX_PUBLIC_DESIGN_BYTES:
         raise ValueError('Brain design exceeds the maximum supported size.')

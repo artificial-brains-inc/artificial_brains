@@ -30,6 +30,9 @@ def to_python(brain: Brain) -> str:
                 args += f", {_num(edge['strength'])}" if round(edge['strength'], 2) == edge['strength'] else f", {edge['strength']!r}"
         if "role" in edge: args += f", role={edge['role']!r}"
         if "units" in edge: args += f", units={edge['units']!r}"
+        if "rule" in edge: args += f", rule={edge['rule']!r}"
+        if "reward" in edge: args += f", reward={edge['reward']!r}"
+        if "reward_type" in edge: args += f", reward_type={edge['reward_type']!r}"
         lines.append(f"brain.connect({args})")
     lines += ["", "brain.render()", ""]
     return "\n".join(lines)
@@ -94,7 +97,7 @@ def parse_python(source: str, *, previous: Brain | None = None) -> Brain:
                 "input": {"name", "neurons"},
                 "opu": {"name", "rhythm", "tnorm"},
                 "output": {"name", "n"},
-                "connect": {"source", "target", "connection", "strength", "role", "units"},
+                "connect": {"source", "target", "connection", "strength", "role", "units", "rule", "reward", "reward_type"},
                 "render": set(),
                 "save": set(),
             }

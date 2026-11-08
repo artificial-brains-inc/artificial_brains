@@ -7,7 +7,7 @@ const STAGE_W = 2600;
 const STAGE_H = 1800;
 const NODE_W = 210;
 const NODE_H = 128;
-const RHYTHMS = ['high-gamma', 'gamma', 'beta', 'alpha', 'theta', 'delta'];
+const RHYTHMS = ['high-gamma', 'gamma', 'beta', 'alpha', 'theta', 'delta', 'dopaminergic'];
 let design = null;
 let generatedCode = '';
 let warnings = [];
@@ -177,9 +177,9 @@ function makeSvg(tag,attributes={}){
   const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attributes)) e.setAttribute(k,String(v));return e;
 }
 // Public circuit geometry only. Shapes reflect population roles, never implementation data.
-const RHYTHM_COLORS = {'high-gamma':'#5eead4',gamma:'#67e8f9',beta:'#fbbf24',alpha:'#a5b4fc',theta:'#c4a1ff',delta:'#f0abfc'};
+const RHYTHM_COLORS = {'high-gamma':'#5eead4',gamma:'#67e8f9',beta:'#fbbf24',alpha:'#a5b4fc',theta:'#c4a1ff',delta:'#f0abfc',dopaminergic:'#86efac'};
 function nodeColor(n){return n.kind==='input'?'#a78bfa':n.kind==='output'?'#fb923c':RHYTHM_COLORS[n.rhythm];}
-function nodeSymbol(n){return n.kind==='input'?'IN':n.kind==='output'?'OUT':({'high-gamma':'Hγ',gamma:'γ',beta:'β',alpha:'α',theta:'θ',delta:'δ'}[n.rhythm]);}
+function nodeSymbol(n){return n.kind==='input'?'IN':n.kind==='output'?'OUT':({'high-gamma':'Hγ',gamma:'γ',beta:'β',alpha:'α',theta:'θ',delta:'δ',dopaminergic:'DA'}[n.rhythm]);}
 function shapePoints(n){
   if(n.kind==='input')return [[-29,-27],[29,-27],[29,27],[-29,27]];
   if(n.kind==='output')return [[0,-34],[37,0],[0,34],[-37,0]];
@@ -366,7 +366,7 @@ function renderInspector(){
     addField(box,'Name',node.name,'text',null,value=>{
       if(value===node.name)return;
       const d=clone(design);const item=d.nodes.find(n=>n.name===node.name);item.name=value;
-      d.connections.forEach(e=>{if(e.from===node.name)e.from=value;if(e.to===node.name)e.to=value;});
+      d.connections.forEach(e=>{if(e.from===node.name)e.from=value;if(e.to===node.name)e.to=value;if(e.reward===node.name)e.reward=value;});
       selection={kind:'node',name:value};commit(d);
     });
     if(node.kind==='output')addField(box,'Output neurons',node.neurons||1,'number',null,value=>{
@@ -376,7 +376,7 @@ function renderInspector(){
       const d=clone(design);d.nodes.find(n=>n.name===node.name).neurons=Number(value);commit(d);
     });
     if(node.kind==='opu'){
-      addField(box,'Rhythm',node.rhythm,'select',RHYTHMS.map(r=>[fmtRhythm(r),r]),value=>{
+      addField(box,'Rhythm / neuron type',node.rhythm,'select',RHYTHMS.map(r=>[fmtRhythm(r),r]),value=>{
         const d=clone(design);const target=d.nodes.find(n=>n.name===node.name);target.rhythm=value;
         if(target.tnorm===undefined)target.tnorm=value==='high-gamma'?10:5;
         commit(d);
@@ -394,6 +394,7 @@ function renderInspector(){
     }
     deleteButton(box,()=>{
       const d=clone(design);d.nodes=d.nodes.filter(n=>n.name!==node.name);d.connections=d.connections.filter(e=>e.from!==node.name&&e.to!==node.name);
+      d.connections.forEach(e=>{if(e.reward===node.name)delete e.reward;});
       selection=null;commit(d);
     },'Delete population');
   }else{
@@ -405,6 +406,34 @@ function renderInspector(){
       link.type=value;if(value!=='inh')delete link.strength;
       commit(d);
     });
+    addField(box,'Learning rule',edge.rule??'static','select',[
+      ['Static (default)','static'],['STDP','STDP'],['STDP3','STDP3'],['STDP3 slow','STDP3_SLOW']
+    ],value=>{
+      const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
+      if(value==='static')delete link.rule;else link.rule=value;
+      if(value!=='STDP3'&&value!=='STDP3_SLOW'){delete link.reward;delete link.reward_type;}
+      commit(d);
+    });
+    if(edge.rule==='STDP3'||edge.rule==='STDP3_SLOW'){
+      const rewards=design.nodes.filter(n=>n.kind==='opu'&&n.rhythm==='dopaminergic');
+      addField(box,'Reward population',edge.reward??'','select',[
+        ['Select reward population',''],...rewards.map(n=>[n.name,n.name])
+      ],value=>{
+        const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
+        if(value)link.reward=value;else delete link.reward;
+        commit(d);
+      });
+      addField(box,'Reward type',edge.reward_type??'LTP','select',[
+        ['LTP','LTP'],['LTD','LTD']
+      ],value=>{
+        const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
+        link.reward_type=value;
+        commit(d);
+      });
+      const learningNote=document.createElement('p');learningNote.className='field-note';
+      learningNote.textContent=rewards.length?'Spikes from the selected dopaminergic population provide the reward signal.':'Add an OPU, choose Dopaminergic, and connect the activity that should produce reward.';
+      box.appendChild(learningNote);
+    }
     const targetNode=design.nodes.find(n=>n.name===edge.to);
     const sourceNode=design.nodes.find(n=>n.name===edge.from);
     if(targetNode.kind==='opu'){
@@ -652,7 +681,7 @@ function wireEvents(){
     }
     if(!inField&&(ev.key==='Delete'||ev.key==='Backspace')&&selection){
       ev.preventDefault();const d=clone(design);
-      if(selection.kind==='node'){d.nodes=d.nodes.filter(n=>n.name!==selection.name);d.connections=d.connections.filter(e=>e.from!==selection.name&&e.to!==selection.name);}
+      if(selection.kind==='node'){d.nodes=d.nodes.filter(n=>n.name!==selection.name);d.connections=d.connections.filter(e=>e.from!==selection.name&&e.to!==selection.name);d.connections.forEach(e=>{if(e.reward===selection.name)delete e.reward;});}
       else d.connections=d.connections.filter(e=>!(e.from===selection.from&&e.to===selection.to));
       selection=null;commit(d);return;
     }

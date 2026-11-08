@@ -8,9 +8,10 @@ import re
 from typing import Any
 
 SCHEMA = "artificial-brains/design/v1"
-RHYTHMS = ("high-gamma", "gamma", "beta", "alpha", "theta", "delta")
+RHYTHMS = ("high-gamma", "gamma", "beta", "alpha", "theta", "delta", "dopaminergic")
 HIGH_GAMMA = "high-gamma"
 EDGE_KINDS = ("exc", "inh")
+LEARNING_RULES = ("static", "STDP", "STDP3", "STDP3_SLOW")
 NODE_KINDS = ("input", "opu", "output")
 MAX_INPUT_NEURONS = 498  # Per-sensor contract supported on the current Prima-Lux.
 
@@ -99,7 +100,7 @@ def _node(data: Any, index: int) -> dict:
     elif kind == "opu":
         rhythm = data.get("rhythm")
         if not isinstance(rhythm, str) or rhythm.lower() not in RHYTHMS:
-            raise DesignError(f"{name}: choose high-gamma, gamma, beta, alpha, theta, or delta.")
+            raise DesignError(f"{name}: choose high-gamma, gamma, beta, alpha, theta, delta, or dopaminergic.")
         value["rhythm"] = rhythm.lower()
         # An omitted high-gamma TNorm preserves the established unit-weight design.
         # Explicit TNorm uses the same public 0..10 contract as every other OPU.
@@ -125,6 +126,28 @@ def _edge(data: Any, index: int, by_name: dict) -> dict:
     if by_name[source]["kind"] == "input" and by_name[target]["kind"] == "output":
         raise DesignError("Connect an input through an OPU before connecting to an output.")
     result = {"from": source, "to": target, "type": kind}
+    rule = data.get("rule", "static")
+    if not isinstance(rule, str) or rule not in LEARNING_RULES:
+        raise DesignError("Learning rule must be static, STDP, STDP3, or STDP3_SLOW.")
+    # Omit the existing default so unchanged designs retain their hashes.
+    if rule != "static":
+        result["rule"] = rule
+    if "reward" in data:
+        reward = data["reward"]
+        if rule not in ("STDP3", "STDP3_SLOW"):
+            raise DesignError("A reward source applies only to STDP3 or STDP3_SLOW.")
+        if (not isinstance(reward, str) or reward not in by_name
+                or by_name[reward].get("kind") != "opu"
+                or by_name[reward].get("rhythm") != "dopaminergic"):
+            raise DesignError("Reward source must name a dopaminergic population in this brain.")
+        result["reward"] = reward
+    if "reward_type" in data:
+        reward_type = data["reward_type"]
+        if rule not in ("STDP3", "STDP3_SLOW"):
+            raise DesignError("Reward type applies only to STDP3 or STDP3_SLOW.")
+        if not isinstance(reward_type, str) or reward_type not in ("LTP", "LTD"):
+            raise DesignError("Reward type must be LTP or LTD.")
+        result["reward_type"] = reward_type
     if kind == "inh":
         if "strength" in data:
             strength = _inhibition_strength(data["strength"])
@@ -183,6 +206,9 @@ def inspect_design(data: dict) -> list[str]:
     by_name = {node["name"]: node for node in data["nodes"]}
     edges = data["connections"]
     messages = []
+    for edge in edges:
+        if edge.get("rule") in ("STDP3", "STDP3_SLOW") and "reward" not in edge:
+            messages.append(f"{edge['from']} → {edge['to']}: select a dopaminergic reward source before building.")
     for node in data["nodes"]:
         inc = [e for e in edges if e["to"] == node["name"]]
         out = [e for e in edges if e["from"] == node["name"]]
@@ -208,7 +234,9 @@ def inspect_design(data: dict) -> list[str]:
                 if target["rhythm"] == HIGH_GAMMA:
                     pending.extend(e["to"] for e in edges if e["from"] == name)
                     continue
-                limit = SUGGESTED_DIRECT_INPUT_MAX[target["rhythm"]]
+                limit = SUGGESTED_DIRECT_INPUT_MAX.get(target["rhythm"])
+                if limit is None:
+                    continue
                 if node["neurons"] > limit:
                     messages.append(
                         f"Input {node['name']} has {node['neurons']:,} neurons; "
@@ -247,14 +275,23 @@ class Brain:
 
     def connect(self, source: str, target: str, connection: str = "exc",
                 strength: float | None = None, *, role: str | None = None,
-                units: float | None = None) -> "Brain":
+                units: float | None = None, rule: str = "static",
+                reward: str | None = None, reward_type: str | None = None) -> "Brain":
         """Connect populations; strength scales inhibitory reference (minimum 0.1, no upper cap).
 
         The fourth argument is not a physical weight or a guarantee of target
         spike suppression. Existing connect(A, B, 'inh') means full reference.
+        rule selects static, STDP, STDP3, or STDP3_SLOW with internal settings.
+        reward names a dopaminergic population for STDP3 or STDP3_SLOW.
+        reward_type selects LTP or LTD; omitted means the existing LTP default.
         """
         d = self.to_dict()
         edge = {"from": source, "to": target, "type": connection}
+        edge["rule"] = rule
+        if reward is not None:
+            edge["reward"] = reward
+        if reward_type is not None:
+            edge["reward_type"] = reward_type
         if strength is not None:
             edge["strength"] = strength
         if role is not None:

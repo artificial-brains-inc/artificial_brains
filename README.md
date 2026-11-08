@@ -2,7 +2,7 @@
 
 Build artificial brains, connect them to the synthetic neurons on **Prima-Lux or ABi**, explore biomimetic intelligence, create applications that let robots and other machines sense, decide, and act as they experience the world.
 
-The SDK provides a common interface for designing an Artificial Brain, preparing it on Prima-Lux, publishing live sensory information, receiving neural outputs, decoding commands, and running a robot's sensor–actuator loop. **Your application owns its sensors, actuators, safety limits, and environment.**
+The SDK provides a common interface for designing an Artificial Brain, preparing it on Prima-Lux or ABi, publishing live sensory information, receiving neural outputs, decoding commands, and running a robot's sensor–actuator loop. **Your application owns its sensors, actuators, safety limits, and environment.**
 
 ## Quick start
 
@@ -27,10 +27,10 @@ my-robot/
 
 The usual workflow is:
 
-1. Design or edit an Artificial Brain using Python or Canvas.
+1. Design or edit an Artificial Brain using Python or Canvas Design UI.
 2. Build it on the synthetic neurons on Prima-Lux or ABi and wait for **READY**.
 3. Run your Python application, which sends sensory observations and handles neural outputs.
-4. Stop the application and wait for Prima-Lux to finish saving neural state.
+4. Stop the application and wait for Prima-Lux or ABi to finish saving neural state.
 
 ## 1. Create your first Artificial Brain
 
@@ -128,7 +128,7 @@ Inhibitory `strength` is a multiplier of the calculated reference, defaulting to
 brain.connect("STOP", "MOTOR_STATE", "inh", strength=0.9)
 ```
 
-This does not guarantee that 90% of the receiving neurons stop firing. It is not the booklet's source-and-target-dependent M90 suppression reference. Keep arithmetic cancellation at the recipe's signed units and default strength. Choose veto/reset inhibition for its separate suppression role.
+This does not guarantee that 90% of the receiving neurons stop firing. Keep arithmetic cancellation at the recipe's signed units and default strength. Choose veto/reset inhibition for its separate suppression role.
 
 For a return to an earlier OPU, identify feedback explicitly:
 
@@ -185,6 +185,96 @@ Fast motor beta can inhibit an antagonist's Theta T2.01 and clear the antagonist
 For association, two or more Beta T5 streams can feed Delta T2. The guide expands the recurrent memory path through distinct Delta T2 and Alpha T5 populations, returning to the same association OPU with `role="feedback"`. Look at which neurons participate as cues change; persistent firing alone is not a complete description of memory.
 
 An ACK also remains a bistable output. Make it brief through its clearing circuit: ACK input → high-gamma relay → ACK output → separate high-gamma reset → inhibitory return to ACK. A repeated held ACK in successive frames is not a new acknowledgement, and ACK does not mean all neural processing has completed.
+
+### Learning Rules
+
+### Neural dynamics come first
+
+Our artificial brains compute through neural dynamics. Connected populations interact, form associations, retain information, recall earlier states, and produce actions through their activity and feedback.
+
+**These capabilities do not depend on adding a learning rule.** A network with static connections can still compute, hold memory and adapt/respond to a changing environment based on real-time sensory input. Static describes the connection TNorm, not the activity or capabilities of the brain.
+
+Learning rules serve a different purpose: **adjusting behavior through experience**. They change how strongly particular pathways influence the network. For example, increasing opposition to an unwanted response or reducing inhibition so another response becomes available.
+
+First establish the intended behavior through neural dynamics. Then add learning rules where a specific behavior should adapt. Inhibitory connections are especially useful for adjusting how existing computations influence behavior.
+
+Learning rules on excitatory connections between OPUs can alter the computation itself. Use it deliberately when that relationship should change.
+
+
+### What eligibility means
+
+A reward often arrives after the activity that led to it. To connect the two, a learning connection can keep a short memory of how its source and receiving neurons recently fired. We call this **eligibility**.
+
+This memory can point toward making the connection stronger or weaker. When the source fires shortly before the receiver, it contributes toward strengthening. When the receiver fires before the source, it contributes toward weakening. Repeated firing combines these contributions, and older contributions fade.
+
+Eligibility lets a later reward act on recent neural activity. Each connection has its own history, so the same reward can affect different connections differently.
+
+### Choose a learning rule
+
+| Rule | What it does |
+| --- | --- |
+| `STDP` | Changes connection strength from the relative firing of the connected neurons. It does not wait for reward. |
+| `STDP3` | Keeps eligibility and uses activity from a selected dopaminergic OPU to apply changes. |
+| `STDP3_SLOW` | Works like STDP3, but changes connection strength more slowly. |
+
+Use STDP when the connection should adapt directly from neural activity. Use STDP3 when a reward should influence which recent activity changes the connection. Use STDP3_SLOW when that reward-dependent change should happen more gradually.
+
+Connections use `rule="static"` by default. Their connection strength remain fixed, while the neurons and the network continue to produce changing activity.
+
+### Add learning after the basic behavior works
+
+**Neural dynamics are the core of an Artificial Brain.** First build a network whose intended behavior is stable with static connections. Then add learning where experience should change a particular behavior.
+
+Inhibitory learning is especially useful. By changing inhibition, a network can learn which pathways to suppress, release, or allow to compete. An entire network can adapt through these changes while keeping its excitatory computations fixed.
+
+Learning on excitatory connections is also supported, but it can change the computation performed between OPUs. The same applies to inhibitory connections used as exact arithmetic operands. Choose which relationships should change and which should preserve their original operation.
+
+### Connect learning to reward
+
+Reward can come from an external event or from the network's own feedback. Both can drive a dopaminergic OPU, whose firing becomes the learning signal.
+
+An external reward is sent to a named input, such as `REWARD_IN`. That input feeds the neural pathway that activates a dopaminergic OPU, such as `REWARD`. A reward can also come from conditions detected inside the brain. In both cases, `reward="REWARD"` selects the dopaminergic OPU whose firing influences learning.
+
+```python
+# REWARD_DRIVE, CONTROL and STATE are existing ordinary OPUs.
+brain.opu("REWARD", "dopaminergic", 3)
+brain.connect("REWARD_DRIVE", "REWARD")
+
+brain.connect(
+    "CONTROL", "STATE", "inh",
+    rule="STDP3",
+    reward="REWARD",
+    reward_type="LTP",
+)
+```
+
+`reward="REWARD"` selects the dopaminergic population that influences learning on this connection.
+
+`reward_type="LTP"` follows the direction held in eligibility. `"LTD"` reverses that direction. Therefore, LTP does not always strengthen the connection, and LTD does not always decrease its strength. On an inhibitory connection, a stronger connection means stronger opposition.
+
+The amount of change also depends on the reward population's firing. With the same eligibility and learning rule, more reward neurons firing in a timestep produces a larger adjustment. Continued or repeated reward bursts can produce further changes.
+
+### Help reward activity settle
+
+Reward neurons have recovery dynamics: after firing a burst, they become temporarily less ready to burst again. Sustained excitation can nevertheless activate them repeatedly.
+
+An inhibitory pathway can help regulate this activity:
+
+```python
+# REWARD_BRAKE is an existing ordinary OPU with an activating pathway.
+brain.connect(
+    "REWARD_BRAKE", "REWARD", "inh",
+    rule="STDP3_SLOW",
+    reward="REWARD",
+    reward_type="LTP",
+)
+```
+
+Here, the reward population influences learning on its own inhibitory input. If learning strengthens that active inhibition sufficiently, it can suppress future reward bursts. The direction still depends on eligibility.
+
+Use an ordinary OPU to provide the inhibition. A direct inhibitory connection from a dopaminergic OPU to itself does not perform this job in the current engine.
+
+Slow learning does not make reward expire. Let the driving event end and use the intended neural regulation so reward activity can settle and respond again to a later event.
 
 ### Python generators and the Canvas editor
 
