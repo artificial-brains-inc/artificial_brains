@@ -109,6 +109,29 @@ def _node(data: Any, index: int) -> dict:
     return value
 
 
+def _validate_rewards(data, by_name):
+    """Validate multiple named dopamine sources; preserve the legacy single source."""
+    if "rewards" not in data:
+        return
+    if "reward" in data or "reward_type" in data:
+        raise DesignError("Use rewards or reward/reward_type, not both.")
+    if data.get("rule") not in ("STDP3", "STDP3_SLOW"):
+        raise DesignError("Reward sources apply only to STDP3 or STDP3_SLOW.")
+    sources = data["rewards"]
+    if not isinstance(sources, list) or not sources:
+        raise DesignError("Select at least one dopaminergic reward source.")
+    for item in sources:
+        if not isinstance(item, dict) or set(item) != {"source", "type"}:
+            raise DesignError("Each reward needs source and type (LTP or LTD).")
+        source = item["source"]
+        if (not isinstance(source, str) or source not in by_name
+                or by_name[source].get("kind") != "opu"
+                or by_name[source].get("rhythm") != "dopaminergic"):
+            raise DesignError("Reward source must name a dopaminergic population in this brain.")
+        if not isinstance(item["type"], str) or item["type"] not in ("LTP", "LTD"):
+            raise DesignError("Reward type must be LTP or LTD.")
+
+
 def _edge(data: Any, index: int, by_name: dict) -> dict:
     if not isinstance(data, dict):
         raise DesignError(f"Connection {index + 1} must be an object.")
@@ -132,6 +155,9 @@ def _edge(data: Any, index: int, by_name: dict) -> dict:
     # Omit the existing default so unchanged designs retain their hashes.
     if rule != "static":
         result["rule"] = rule
+    _validate_rewards(data, by_name)
+    if "rewards" in data:
+        result["rewards"] = [dict(item) for item in data["rewards"]]
     if "reward" in data:
         reward = data["reward"]
         if rule not in ("STDP3", "STDP3_SLOW"):
@@ -207,7 +233,7 @@ def inspect_design(data: dict) -> list[str]:
     edges = data["connections"]
     messages = []
     for edge in edges:
-        if edge.get("rule") in ("STDP3", "STDP3_SLOW") and "reward" not in edge:
+        if edge.get("rule") in ("STDP3", "STDP3_SLOW") and "reward" not in edge and "rewards" not in edge:
             messages.append(f"{edge['from']} → {edge['to']}: select a dopaminergic reward source before building.")
     for node in data["nodes"]:
         inc = [e for e in edges if e["to"] == node["name"]]
@@ -276,7 +302,8 @@ class Brain:
     def connect(self, source: str, target: str, connection: str = "exc",
                 strength: float | None = None, *, role: str | None = None,
                 units: float | None = None, rule: str = "static",
-                reward: str | None = None, reward_type: str | None = None) -> "Brain":
+                reward: str | None = None, reward_type: str | None = None,
+                rewards: list[dict[str, str]] | None = None) -> "Brain":
         """Connect populations; strength scales inhibitory reference (minimum 0.1, no upper cap).
 
         The fourth argument is not a physical weight or a guarantee of target
@@ -284,10 +311,14 @@ class Brain:
         rule selects static, STDP, STDP3, or STDP3_SLOW with internal settings.
         reward names a dopaminergic population for STDP3 or STDP3_SLOW.
         reward_type selects LTP or LTD; omitted means the existing LTP default.
+        rewards accepts multiple {"source": name, "type": "LTP" or "LTD"} entries
+        instead of reward/reward_type. Each source must be dopaminergic.
         """
         d = self.to_dict()
         edge = {"from": source, "to": target, "type": connection}
         edge["rule"] = rule
+        if rewards is not None:
+            edge["rewards"] = rewards
         if reward is not None:
             edge["reward"] = reward
         if reward_type is not None:

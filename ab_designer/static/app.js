@@ -349,6 +349,13 @@ function addField(box,label,value,control='text',options=null,onCommit=()=>{}){
   return input;
 }
 function deleteButton(box,action,label){const b=document.createElement('button');b.className='field-delete';b.textContent=label;b.addEventListener('click',action);box.appendChild(b);}
+function removeRewardSource(edge,name){
+  if(edge.reward===name){delete edge.reward;delete edge.reward_type;}
+  if(edge.rewards){
+    edge.rewards=edge.rewards.filter(r=>r.source!==name);
+    if(!edge.rewards.length)delete edge.rewards;
+  }
+}
 function renderInspector(){
   if(!design)return;
   $('warningsList').replaceChildren();
@@ -366,7 +373,7 @@ function renderInspector(){
     addField(box,'Name',node.name,'text',null,value=>{
       if(value===node.name)return;
       const d=clone(design);const item=d.nodes.find(n=>n.name===node.name);item.name=value;
-      d.connections.forEach(e=>{if(e.from===node.name)e.from=value;if(e.to===node.name)e.to=value;if(e.reward===node.name)e.reward=value;});
+      d.connections.forEach(e=>{if(e.from===node.name)e.from=value;if(e.to===node.name)e.to=value;if(e.reward===node.name)e.reward=value;(e.rewards||[]).forEach(r=>{if(r.source===node.name)r.source=value;});});
       selection={kind:'node',name:value};commit(d);
     });
     if(node.kind==='output')addField(box,'Output neurons',node.neurons||1,'number',null,value=>{
@@ -394,7 +401,7 @@ function renderInspector(){
     }
     deleteButton(box,()=>{
       const d=clone(design);d.nodes=d.nodes.filter(n=>n.name!==node.name);d.connections=d.connections.filter(e=>e.from!==node.name&&e.to!==node.name);
-      d.connections.forEach(e=>{if(e.reward===node.name)delete e.reward;});
+      d.connections.forEach(e=>{removeRewardSource(e,node.name);});
       selection=null;commit(d);
     },'Delete population');
   }else{
@@ -411,27 +418,34 @@ function renderInspector(){
     ],value=>{
       const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
       if(value==='static')delete link.rule;else link.rule=value;
-      if(value!=='STDP3'&&value!=='STDP3_SLOW'){delete link.reward;delete link.reward_type;}
+      if(value!=='STDP3'&&value!=='STDP3_SLOW'){delete link.reward;delete link.reward_type;delete link.rewards;}
       commit(d);
     });
     if(edge.rule==='STDP3'||edge.rule==='STDP3_SLOW'){
       const rewards=design.nodes.filter(n=>n.kind==='opu'&&n.rhythm==='dopaminergic');
-      addField(box,'Reward population',edge.reward??'','select',[
-        ['Select reward population',''],...rewards.map(n=>[n.name,n.name])
-      ],value=>{
+      const selected=edge.rewards|| (edge.reward?[{source:edge.reward,type:edge.reward_type||'LTP'}]:[]);
+      function updateRewards(items){
         const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
-        if(value)link.reward=value;else delete link.reward;
+        const legacy=!('rewards' in link)&&items.length===1;
+        delete link.reward;delete link.reward_type;delete link.rewards;
+        if(legacy){link.reward=items[0].source;link.reward_type=items[0].type;}
+        else if(items.length)link.rewards=items;
         commit(d);
+      }
+      selected.forEach((item,index)=>{
+        addField(box,`Reward ${index+1}`,item.source,'select',rewards.map(n=>[n.name,n.name]),value=>{
+          const items=clone(selected);items[index].source=value;updateRewards(items);
+        });
+        addField(box,`Reward ${index+1} type`,item.type,'select',[['LTP','LTP'],['LTD','LTD']],value=>{
+          const items=clone(selected);items[index].type=value;updateRewards(items);
+        });
+        deleteButton(box,()=>updateRewards(selected.filter((_,i)=>i!==index)),`Remove reward ${index+1}`);
       });
-      addField(box,'Reward type',edge.reward_type??'LTP','select',[
-        ['LTP','LTP'],['LTD','LTD']
-      ],value=>{
-        const d=clone(design);const link=d.connections.find(e=>e.from===edge.from&&e.to===edge.to);
-        link.reward_type=value;
-        commit(d);
-      });
+      addField(box,'Add reward population','','select',[
+        ['Select a dopaminergic population',''],...rewards.map(n=>[n.name,n.name])
+      ],value=>{if(value)updateRewards([...clone(selected),{source:value,type:'LTP'}]);});
       const learningNote=document.createElement('p');learningNote.className='field-note';
-      learningNote.textContent=rewards.length?'Spikes from the selected dopaminergic population provide the reward signal.':'Add an OPU, choose Dopaminergic, and connect the activity that should produce reward.';
+      learningNote.textContent=rewards.length?'Spikes from all selected populations contribute to reward. Each has its own LTP or LTD direction; opposing signals can cancel.':'Add an OPU, choose Dopaminergic, and connect the activity that should produce reward.';
       box.appendChild(learningNote);
     }
     const targetNode=design.nodes.find(n=>n.name===edge.to);
@@ -681,7 +695,7 @@ function wireEvents(){
     }
     if(!inField&&(ev.key==='Delete'||ev.key==='Backspace')&&selection){
       ev.preventDefault();const d=clone(design);
-      if(selection.kind==='node'){d.nodes=d.nodes.filter(n=>n.name!==selection.name);d.connections=d.connections.filter(e=>e.from!==selection.name&&e.to!==selection.name);d.connections.forEach(e=>{if(e.reward===selection.name)delete e.reward;});}
+      if(selection.kind==='node'){d.nodes=d.nodes.filter(n=>n.name!==selection.name);d.connections=d.connections.filter(e=>e.from!==selection.name&&e.to!==selection.name);d.connections.forEach(e=>{removeRewardSource(e,selection.name);});}
       else d.connections=d.connections.filter(e=>!(e.from===selection.from&&e.to===selection.to));
       selection=null;commit(d);return;
     }

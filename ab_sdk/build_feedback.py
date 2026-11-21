@@ -18,7 +18,7 @@ MESSAGES = {
     'POPULATION_CAPACITY': 'A population exceeds the existing device population capacity. Review the input widths and sources feeding the named target.',
     'NEURON_CAPACITY': 'The design exceeds the existing 10,000-neuron construction budget, including input channels. Reduce its total allocation.',
     'OPERATING_BAND': 'The selected source and target combination has no supported operating band. Review their rhythms and source widths; changing TNorm alone does not create a valid band.',
-    'OUTPUT_SOURCE': 'The existing bistable output requires excitation and accepts beta or high-gamma OPU sources. Review the named output connection.',
+        'OUTPUT_SOURCE': 'Connect an excitatory OPU source to the output. Any OPU rhythm is supported.',
     'INVALID_UNITS': 'Operand units must be a positive finite number on a connection with role operand.',
     'INVALID_STRENGTH': 'Inhibitory strength must be a finite number of at least 0.1.',
     'INVALID_TNORM': 'TNorm must be a finite number from 0 to 10.',
