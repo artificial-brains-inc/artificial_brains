@@ -173,6 +173,11 @@ search stops when the target is confirmed, there is not enough budget for anothe
 complete comparison, cancellation is requested, or no coordinate improvement is
 found at the smallest step. It may finish before using every remaining trial.
 
+Pass `max_trials=None` to remove the trial-count limit. It can then continue
+beyond 30 attempts, while still stopping when the target is confirmed, the
+search finishes without further improvement, or you cancel. Passing a positive
+integer sets a limit; leaving the argument out keeps the existing default of 30.
+
 This is a local search over the selected TNorms. It can improve an existing
 pathway; it cannot guarantee that a target is reachable or that it found a global
 optimum. It does not infer a missing circuit or change topology.

@@ -291,7 +291,7 @@ class _Runner:
 
 def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
              target: Mapping | None = None, error: Callable | None = None,
-             max_trials: int = 30, step: float = 0.5, verify_trials: int = 2,
+             max_trials: int | None = 30, step: float = 0.5, verify_trials: int = 2,
              on_trial: Callable[[TuneTrial], None] | None = None,
              cancel=None, save_to: str | Path | None = None) -> AutoTuneResult:
     """Adjust the listed OPUs, evaluating real observations after each trial.
@@ -305,7 +305,9 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
     Each candidate is compared with the incumbent in interleaved trials and
     must improve every comparison before being accepted. The final settings
     are measured again. ``max_trials`` includes all reference and verification
-    attempts. There is no guarantee that a target is achievable.
+    attempts. Pass ``max_trials=None`` for no trial-count limit; the other
+    stopping conditions still apply. Omitting it retains the default of 30.
+    There is no guarantee that a target is achievable.
 
     This function owns TNorm adjustments only. The caller owns Brain startup,
     input/output streaming, the body, and cleanup. Neural dynamics and learning
@@ -325,8 +327,11 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
     names = tuple(dict.fromkeys(opus))
     if not callable(trial) or (on_trial is not None and not callable(on_trial)):
         raise ValueError('trial and on_trial must be callable.')
-    if type(max_trials) is not int or max_trials < 1 or type(verify_trials) is not int or verify_trials < 1:
-        raise ValueError('max_trials and verify_trials must be positive integers.')
+    if max_trials is not None and (type(max_trials) is not int or max_trials < 1):
+        raise ValueError('max_trials must be a positive integer or None.')
+    if type(verify_trials) is not int or verify_trials < 1:
+        raise ValueError('verify_trials must be a positive integer.')
+    maximum = math.inf if max_trials is None else max_trials
     step = _number(step, 'step')
     ticks = round(step * 100)
     if step <= 0 or ticks < 1 or abs(ticks - step * 100) > 1e-7:
@@ -335,7 +340,7 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
     if not callable(cancelled):
         raise ValueError('cancel must be an Event or a zero-argument callable.')
     scorer = _Scorer(target, error)
-    runner = _Runner(device, names, trial, scorer, max_trials, on_trial, cancelled)
+    runner = _Runner(device, names, trial, scorer, maximum, on_trial, cancelled)
     best = dict(runner.initial)
     baseline = []
     confirmation = []
@@ -347,7 +352,7 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
         return math.fsum(r.score for r in records) / len(records)
 
     try:
-        for _ in range(min(verify_trials, max_trials)):
+        for _ in range(min(verify_trials, maximum)):
             baseline.append(runner.measure(best, 'baseline'))
         best_score = average(baseline)
         if len(baseline) == verify_trials and all(r.target_met for r in baseline):
@@ -357,14 +362,14 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
             # Reserve a fresh final measurement series. Every proposed move
             # also needs reference/candidate pairs, including confirmation.
             required = 2 * verify_trials + verify_trials
-            while max_trials - runner.count >= required:
+            while maximum - runner.count >= required:
                 improved = False
                 for name in names:
                     for direction in (1, -1):
                         value = min(1000, max(0, round(best[name] * 100) + direction * ticks)) / 100
                         if value == best[name]:
                             continue
-                        if max_trials - runner.count < required:
+                        if maximum - runner.count < required:
                             break
                         candidate = {**best, name: value}
                         references, probes = [], []
@@ -398,7 +403,7 @@ def autotune(device, *, opus: Sequence[str], trial: Callable[[], Any],
                     ticks = max(1, ticks // 2)
             runner.apply(best)
             if searched:
-                for _ in range(min(verify_trials, max_trials - runner.count)):
+                for _ in range(min(verify_trials, maximum - runner.count)):
                     confirmation.append(runner.measure(best, 'verify'))
             else:
                 confirmation = baseline
