@@ -105,3 +105,5 @@ Thumbs.db
 
 # Private internal documentation
 /docs/
+
+/.venv-release/

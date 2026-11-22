@@ -3,25 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Artificial Brains — Designer</title>
+  <title>Artificial Brains — Workspace</title>
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
+  <script defer src="/tuning.js"></script>
   <script defer src="/app.js"></script>
+  <script defer src="/workspace.js"></script>
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="identity" aria-label="Artificial Brains Designer">
         <img class="brand-logo" src="/artificial-brains-wordmark.svg" alt="Artificial Brains" />
-        <span class="designer-caption">DESIGNER <span class="version">/ 0.3.6</span></span>
+        <span class="designer-caption">WORKSPACE <span class="version">/ 0.4.5</span></span>
       </div>
-      <nav class="view-switch" role="tablist" aria-label="Editor view">
-        <button class="view-tab active" id="viewCanvas" role="tab" aria-selected="true" aria-controls="editorCanvas">Canvas</button>
-        <button class="view-tab" id="viewPython" role="tab" aria-selected="false" aria-controls="pythonWorkspace">Python</button>
-      </nav>
       <div class="project-name-area"><span class="overline">Brain name</span><input id="brainName" maxlength="80" value="Untitled Brain" aria-label="Brain name" spellcheck="false" /></div>
       <div class="header-actions">
-        <span class="local-badge"><span class="status-dot"></span> Local designer</span>
+        <span class="local-badge"><span class="status-dot"></span> Local workspace</span>
         <button class="button-quiet" id="newBtn" title="Create a blank brain">New</button>
         <button class="button-quiet" id="openBtn" title="Open saved brain design">Open</button>
         <input id="openFile" type="file" accept=".json,.abdesign.json,application/json" hidden />
@@ -29,32 +27,44 @@
       </div>
     </header>
 
-    <div class="device-bar" aria-label="Prima-Lux controls">
+    <div class="device-bar">
+      <nav class="view-switch" role="tablist" aria-label="Editor view">
+        <button class="view-tab active" id="viewCanvas" role="tab" aria-selected="true" aria-controls="editorCanvas">Canvas</button>
+        <button class="view-tab" id="viewPython" role="tab" aria-selected="false" aria-controls="pythonWorkspace">Python</button>
+        <button class="view-tab" id="viewTelemetry" role="tab" aria-selected="false" aria-controls="telemetryWorkspace">Neuron activity</button>
+        <button class="view-tab" id="viewApplication" role="tab" aria-selected="false" aria-controls="applicationWorkspace">Application</button>
+      </nav>
       <div class="device-state"><span class="device-indicator" id="deviceIndicator"></span><strong id="deviceStatus">Prima-Lux · Not connected</strong></div>
       <div class="device-actions">
-        <button class="button-quiet" id="deviceRefresh" title="Check device status">Refresh</button>
-        <button class="button-primary" id="deviceBuild" title="Build and install this brain on Prima-Lux">Build brain</button>
-        <button class="button-outline" id="deviceRun" title="Start the installed neural brain (application input remains separate)" disabled>Run brain</button>
-        <button class="button-quiet" id="deviceStop" title="Stop and save neural state" disabled>Stop brain</button>
+        <button class="button-outline" id="deviceBuild">Build</button>
+        <button class="button-primary" id="deviceRun" disabled>Run</button>
+        <button class="button-outline" id="deviceStop" disabled>Stop</button>
+        <details class="more-menu"><summary aria-label="More device actions">•••</summary><div>
+          <button id="deviceRefresh">Refresh connection</button><button id="deviceReset" disabled>Reset dynamics</button><button id="closeWorkspace">Close workspace</button>
+        </div></details>
       </div>
     </div>
+    <div id="deviceNotice" class="device-notice" role="alert" hidden><span id="deviceNoticeText"></span><button id="dismissNotice" aria-label="Dismiss message">×</button></div>
     <div class="workspace canvas-mode" id="workspace">
       <aside class="leftbar">
-        <div class="sidebar-intro"><div class="overline">YOUR WORKSPACE</div><h1>Build a brain.</h1><p>Add neural populations, then connect them to create useful operations.</p></div>
-        <div class="divider"></div>
-        <div class="overline section-label">01 / ADD</div>
+        <div class="overline section-label">POPULATIONS</div>
         <button class="add-item" id="addInput"><span class="add-icon input-icon">I</span><span><b>Input</b><small>Bring information in</small></span><strong>+</strong></button>
         <button class="add-item" id="addOpu"><span class="add-icon opu-icon">O</span><span><b>OPU</b><small>Neural population</small></span><strong>+</strong></button>
         <button class="add-item" id="addOutput"><span class="add-icon output-icon">↗</span><span><b>Output</b><small>Read a neural result</small></span><strong>+</strong></button>
         <div class="divider"></div>
-        <div class="overline section-label">02 / CONNECT</div>
+        <div class="overline section-label">PRIMITIVES</div>
+        <button class="small-action" id="addPrimitive">＋ Add a primitive</button>
+        <button class="small-action" id="savePrimitive">↓ Save selected circuit</button>
+        <button class="small-action" id="importPrimitive">↑ Import a primitive</button>
+        <input type="file" id="primitiveFile" accept=".json,application/json" hidden>
+        <div class="divider"></div>
+        <div class="overline section-label">CONNECTIONS</div>
         <button class="connection-tool" id="connectBtn"><span class="link-icon">↗</span><span><b>Connect OPUs</b><small>Choose a source, then a target</small></span></button>
         <p class="hint">Drag empty canvas to move the whole graph. Drag a population to move it individually. Connections are excitatory by default.</p>
         <div class="divider"></div>
-        <div class="overline section-label">03 / ORGANIZE</div>
-        <button class="small-action" id="arrangeBtn"><span>▦</span> Arrange nodes</button>
-        <button class="small-action" id="centerBtn"><span>⊙</span> Center view</button>
-        <div class="sidebar-bottom"><span class="tiny-label">BUILD AND EXPLORE</span><p>Design without a device. Connect Prima-Lux when you are ready to build or run.</p></div>
+        <div class="overline section-label">VIEW</div>
+        <button class="small-action" id="arrangeBtn"><span>▦</span> Arrange graph</button>
+        <button class="small-action" id="centerBtn"><span>⊙</span> Fit graph</button>
       </aside>
 
       <main class="editor-area" id="editorCanvas">
@@ -68,9 +78,9 @@
           </div>
         </div>
         <div class="canvas-frame"><div class="canvas-viewport" id="viewport" tabindex="0" aria-label="Editable brain design canvas">
-          <div id="stageShell" class="stage-shell"><div class="stage" id="stage"><svg id="edgeLayer" class="edge-layer" viewBox="0 0 2600 1800" aria-label="Connections"><defs><marker id="excArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#2ea8c8"></path></marker></defs></svg><div id="nodesLayer" class="nodes-layer"></div><div id="wirePreview" class="wire-preview" hidden></div></div></div>
+          <div id="stageShell" class="stage-shell"><div class="stage" id="stage"><svg id="edgeLayer" class="edge-layer" viewBox="0 0 2600 1800" aria-label="Connections"><defs><marker id="excArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#2ea8c8"></path></marker></defs></svg><div id="groupsLayer" class="groups-layer"></div><div id="nodesLayer" class="nodes-layer"></div><div id="wirePreview" class="wire-preview" hidden></div></div></div>
         </div>
-        <div id="emptyState" class="empty-state"><div class="empty-glyph">◎</div><h2>Every brain begins with a connection.</h2><p>Add an OPU and an input, or start with a simple three-OPU pathway.</p><div class="empty-actions"><button id="emptyAddBtn" class="button-primary">Add an OPU</button><button id="starterBtn" class="button-outline">Try a starter brain</button></div></div></div>
+        <div id="emptyState" class="empty-state"><div class="empty-glyph">◎</div><h2>Start with a circuit.</h2><p>Add populations or choose a primitive from the library.</p><div class="empty-actions"><button id="emptyAddBtn" class="button-primary">Add an OPU</button><button id="starterBtn" class="button-outline">Try a starter brain</button></div></div></div>
         <div class="editor-statusbar"><span id="stats">0 populations · 0 connections</span><span>Drag to move · Drag from <strong>●</strong> to connect · Select a node to edit</span></div>
       </main>
 
@@ -83,6 +93,14 @@
         </section>
         <div class="rightbar-footer"><button class="footer-action" id="exportSvg">↓ Export SVG diagram</button></div>
       </aside>
+      <section id="telemetryWorkspace" class="telemetry-workspace" role="tabpanel" aria-labelledby="viewTelemetry" hidden><iframe id="telemetryFrame" title="Individual neuron activity and firing history"></iframe></section>
+      <section id="applicationWorkspace" class="application-workspace" role="tabpanel" aria-labelledby="viewApplication" hidden>
+        <div class="application-toolbar"><div><h2 id="applicationTitle">Your application</h2><p id="applicationStatus">Connect your controller to this workspace.</p></div><button id="applicationSettings" class="button-outline">Configure application</button></div>
+        <div id="applicationEmpty" class="application-empty"><h2>One place to run your controller.</h2><p>Choose a Python entry point and press Run. Add commands with ApplicationUI, or display your existing web interface here.</p><button id="applicationSetup" class="button-primary">Choose application</button></div>
+        <div id="applicationPanel" class="application-panel" hidden><div id="applicationValues" class="application-values"></div><div id="applicationButtons" class="application-buttons"></div></div>
+        <div id="applicationWeb" class="application-web" hidden><p>If this interface refuses embedding, <a id="applicationLink" target="_blank" rel="noopener noreferrer">open it in its own window</a>.</p><iframe id="applicationFrame" title="Developer application" sandbox="allow-scripts allow-forms allow-same-origin allow-downloads"></iframe></div>
+        <details class="application-console"><summary>Controller log</summary><pre id="applicationLog">The controller has not started.</pre></details>
+      </section>
       <section id="pythonWorkspace" class="python-workspace" role="tabpanel" aria-labelledby="viewPython" hidden>
         <div class="python-toolbar">
           <div class="python-heading"><span class="overline">BRAIN / CODE</span><h1>Python</h1><p>Write your brain using the same inputs, OPUs and connections as Canvas.</p></div>
@@ -104,6 +122,32 @@
         <div id="codeError" class="code-error" role="alert" hidden></div>
       </section>
     </div>
+    <section id="tnormPopup" class="tnorm-popup" role="dialog" aria-labelledby="tnormTitle" hidden>
+      <div class="popup-heading"><div><span class="overline">LIVE TNORM</span><h3 id="tnormTitle"></h3></div><button id="tnormClose" class="icon-button" aria-label="Close TNorm">×</button></div>
+      <div class="tnorm-inputs"><input id="tnormSlider" type="range" min="0" max="10" step="0.01" aria-label="Live TNorm"><input id="tnormNumber" type="number" min="0" max="10" step="0.01" aria-label="Exact live TNorm"></div>
+      <p id="tnormMessage" role="status"></p>
+    </section>
+    <dialog id="applicationDialog" class="workspace-dialog"><form id="applicationForm">
+      <span class="overline">PROJECT APPLICATION</span><h2>Run your controller here</h2>
+      <label>Python or shell entry point<input id="applicationEntry" placeholder="run.py"></label>
+      <label>Arguments (optional)<input id="applicationArgs" placeholder="--mode live"></label>
+      <label>Web interface URL or project HTML file (optional)<input id="applicationUI" placeholder="ui/index.html or http://127.0.0.1:8501/"></label>
+      <details><summary>Python environment</summary><label>Python executable (optional)<input id="applicationPython" placeholder="Use the project's .venv automatically"></label></details>
+      <p class="muted">Paths are relative to your project. Run starts the brain and this entry point. Stop stops the controller and saves neural state.</p>
+      <p id="applicationError" class="error-message" role="alert"></p><div class="dialog-actions"><button type="button" id="cancelApplication" class="button-quiet">Cancel</button><button class="button-primary" type="submit">Save settings</button></div>
+    </form></dialog>
+    <dialog id="primitiveDialog" class="workspace-dialog">
+      <form id="primitiveForm"><div class="overline">REUSABLE CIRCUITS</div><h2>Add a primitive</h2>
+      <label>Primitive<select id="primitiveKind"></select></label><p id="primitiveDescription"></p>
+      <label>Instance name<input id="primitiveName" value="MOTOR" required pattern="[A-Za-z][A-Za-z0-9_]*"></label>
+      <label id="primitiveWidthLabel">Sensor input neurons<input id="primitiveWidth" type="number" value="1" min="1" max="498"></label>
+      <div id="decisionOptions" class="two-fields" hidden><label>Supporting inputs<input id="primitiveInputs" type="number" value="1" min="1"></label><label>Opposing inputs<input id="primitiveOpposition" type="number" value="0" min="0"></label></div>
+      <label id="fuzzyOptions" hidden>Channels per bank<input id="primitiveBank" type="number" value="8" min="1"></label>
+      <details class="port-bindings"><summary>Connect existing signals (optional)</summary><div id="primitiveSources"></div></details>
+      <p class="muted">The full circuit stays visible and editable. Ports use the instance name as a prefix.</p>
+      <p id="primitiveError" role="alert"></p><div class="dialog-actions"><button type="button" class="button-quiet" id="cancelPrimitive">Cancel</button><button type="submit" class="button-primary">Add circuit</button></div></form>
+    </dialog>
+    <dialog id="extractDialog" class="workspace-dialog"><form id="extractForm"><div class="overline">SAVE A PRIMITIVE</div><h2>Choose its populations</h2><label>Template name<input id="extractName" value="My primitive" required></label><div id="extractMembers" class="extract-members"></div><p class="muted">Internal connections and learning rules are preserved. External connections are made after inserting the template.</p><p id="extractError" role="alert"></p><div class="dialog-actions"><button type="button" class="button-quiet" id="cancelExtract">Cancel</button><button class="button-primary">Download primitive</button></div></form></dialog>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   </div>
 </body>

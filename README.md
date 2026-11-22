@@ -288,17 +288,96 @@ ab build brain --brain brain.abdesign.json --env .env
 Use the **Introductory Guide to Building an Artificial Brain, version 0.4** for expanded construction recipes and code blocks. `brain.validate()` returns structural and advisory warnings; inspect actual neuron activity through telemetry as you compose the circuit.
 
 
-### Build visually with Canvas or Python
+### Design, observe, and run in one workspace
 
 From your project folder:
 
 ```bash
-ab design --brain brain.abdesign.json
+ab design --project . --brain brain.abdesign.json --env .env
 ```
 
-The Designer has two views of the **same Brain**: **Canvas** for arranging OPUs and connections and **Python** for editing code. Changes can be made in either view. Save the Brain to retain your work.
+The workspace contains Canvas, Python, Neuron activity, and Application tabs.
 
-Its **Build brain**, **Run brain**, and **Stop brain** controls operate the connected Prima-Lux device. Running the Brain in the Designer starts its neural activity; it does **not** launch a robot application or automatically connect sensors and motors. Use `ab run` to launch your application.
+Canvas and Python edit the same Brain. Build prepares and installs it on Prima-Lux. After the device reports READY, Run starts the installed Brain and your configured application. Stop ends the application launched by the workspace and waits for the Brain to stop and save its neural state.
+
+Run does not rebuild the Brain. Save brain exports your current design.
+
+### Connect your application to the workspace
+
+Open Application → Configure application and select your controller's Python entry point, such as `run.py`. Set any arguments and choose its Python environment if necessary. Install the SDK and your application dependencies in that environment.
+
+A single `run.py`, `main.py`, or `app.py` in the project is detected automatically. Settings are saved in `ab.workspace.json`.
+
+Press Run to launch the controller. Its controls and logs appear in the Application tab. Your controller still owns its sensor connections, output handling, and robot cleanup.
+
+Do not launch a second copy of the same controller from another terminal while the workspace is running it.
+
+### Add buttons and readouts from Python
+
+Use `ApplicationUI` inside your existing controller:
+
+```python
+from ab_sdk.workspace import ApplicationUI
+
+# `controller` is your application's existing object.
+# Its pause(), resume(), and run() methods belong to your application.
+panel = ApplicationUI("My robot")
+panel.button("pause", "Pause", controller.pause)
+panel.button("resume", "Resume", controller.resume)
+panel.value("Mode", "Ready")
+
+try:
+    panel.start()
+    controller.run()  # Your existing sensor/output loop.
+finally:
+    panel.close()
+```
+
+Update a displayed value from your controller with:
+
+```python
+panel.value("Mode", "Moving")
+```
+
+Buttons call the registered Python functions on a separate controls thread. Keep them short or send the requested action to your controller's own queue. Readout values must be JSON serializable; `panel.value()` publishes them in the background.
+
+Keep your existing session-stop and robot cleanup code. Closing the panel only disconnects its controls; it does not stop the Brain or release robot resources.
+
+### Display your existing web interface
+
+In Configure application, enter your interface URL, such as `http://127.0.0.1:8501/`, or select a project HTML file such as `ui/index.html`.
+
+Your controller must start any web server that interface requires. The workspace displays the interface in the Application tab when you press Run.
+
+A controller can also register its interface directly:
+
+```python
+from ab_sdk.workspace import ApplicationUI
+
+panel = ApplicationUI("My robot", url="http://127.0.0.1:8501/")
+panel.start()
+
+# Keep your controller running.
+# Call panel.close() during its cleanup.
+```
+
+The web interface must allow embedding to appear inside the tab. An interface that blocks embedding can be opened through its separate-window link. For a desktop application, use `ApplicationUI` to expose controls in the workspace; its native window remains separate.
+
+### Run without the Designer
+
+Your controller can run from the terminal without opening the Designer:
+
+```bash
+ab build brain --brain brain.abdesign.json --env .env
+ab run --env .env
+```
+
+Build once and wait for READY. Later runs can use the installed Brain without building again.
+
+`ab run` launches the project's `run.py`, `main.py`, or `app.py`. You can also start your Python controller directly when it already handles SDK session startup and cleanup.
+
+Set `AB_TELEMETRY=false` if you do not want the session to open the workspace automatically.
+
 
 ## 2. Connect to Prima-Lux
 
@@ -460,21 +539,21 @@ print(encoded.target, encoded.payload, encoded.meta)
 
 ### Live neuron telemetry
 
-To see individual neurons firing while your application runs, add this to your project’s `.env`:
+To open neuron telemetry automatically when your application starts its Prima-Lux session, add this to your project's `.env`:
 
 ```dotenv
 AB_TELEMETRY=true
 ```
 
-The SDK opens a telemetry window when your application starts its Prima-Lux session.
+Telemetry appears in the shared SDK workspace, alongside Canvas, Python, and Application. Later sessions reuse the workspace for the same project and environment configuration.
 
-Each dot represents one neuron: bright means firing in the displayed timestep; dark means inactive. Select an OPU to inspect its neurons and firing history, with one row per neuron. Input stimulation is displayed separately from neural firing.
+Open Neuron activity and select a population. Individual neurons remain visible whether active or inactive, with their firing history available for inspection. Input stimulation and retained bistable output states are distinguished from OPU spikes.
 
-You can pan, zoom, and freeze the view. **Freeze view pauses only the display; the Brain and controller continue running.**
+Freeze pauses only the display. Neural execution and output delivery continue.
 
-Set `AB_TELEMETRY=false`, or omit it, to disable the viewer. Output streaming works independently of this setting.
+Set `AB_TELEMETRY=false`, or omit it, to disable automatic opening. Output streaming and Python TNorm control work independently of this setting.
 
-This feature requires the updated SDK and Prima-Lux software with neuron telemetry support.
+Closing a browser tab does not stop the Brain or controller. Use Stop and wait for saving to finish.
 
 
 ## 6. Decode neural outputs into actions
@@ -724,6 +803,73 @@ ab device --env .env reset-dynamics
 - **Reset dynamics** starts the installed Artificial Brain's neural dynamics from its initial state, discarding accumulated changes, memory and learnings. It does not change your robot's physical state.
 
 An Artificial Brain's saved neural state and your robot's environment are separate. Your application is responsible for camera, joint, world, or other external state when resuming in a changed environment. Avoid disconnecting or powering down the device while Stop is still in progress.
+
+### Adjust TNorm while the Brain runs
+
+TNorm can be adjusted from the Canvas or from Python. It belongs to an OPU, including high-gamma and dopaminergic OPUs, and is not limited to connections with learning rules.
+
+In the Canvas, click an OPU while the Brain runs. Move its TNorm slider or enter an exact value. Changes are sent automatically; newer positions replace older unsent positions.
+
+The Brain must have been built with live TNorm support and installed on a device with the matching runtime. During compilation, the package receives the instructions needed to calculate adjustments locally. Subsequent changes go directly from the SDK to Prima-Lux, without contacting the compilation server or rebuilding.
+
+Changes apply between neural timesteps without resetting accumulated neural dynamics. TNorm keeps its existing 0–10 range and two-decimal precision. TNorm 0 does not mean OFF.
+
+### Adjust TNorm from a Python controller or terminal
+
+The Designer does not need to be open. Use `PrimaLuxClient.tuning()` to inspect current values and `PrimaLuxClient.tune()` to update named OPUs.
+
+For example, save this as `tune_brain.py`:
+
+```python
+import os
+from ab_sdk.primalux import PrimaLuxClient
+
+with PrimaLuxClient.from_env(os.getenv("AB_ENV", ".env")) as device:
+    state = device.tuning()
+
+    if not state.get("available"):
+        raise RuntimeError(
+            state.get("message") or "Live TNorm is unavailable."
+        )
+
+    # Replace these with actual OPU names in the installed Brain.
+    state = device.tune(
+        {"T1": 3.25, "T2": 2.10},
+        state=state,
+    )
+
+    print({
+        opu["name"]: opu["tnorm"]
+        for opu in state["opus"]
+    })
+```
+
+Run it from the project folder using your application's Python environment:
+
+```bash
+python tune_brain.py
+```
+
+This updates the installed Brain. It does not launch a second robot controller.
+
+The same calls can be used inside your controller. Keep the client open for repeated adjustments and pass the state returned by each successful update into the next:
+
+```python
+state = device.tune({"T1": 3.50}, state=state)
+```
+
+Send updates sequentially. If another caller changes the tuning state, refresh it with `device.tuning()` and check that the intended Brain is still installed before sending another adjustment.
+
+`device.run()` starts the installed Brain when your code manages its lifecycle directly. An application using `ABClient.start_from_env()` already handles session startup. `device.stop_and_wait()` stops the Brain and waits for its state to be saved.
+
+There is currently no dedicated `ab device tune` command; use the Python API or a script such as the one above.
+
+### Keep adjusted values
+
+Stop saves the current neural state and TNorm values on the device. Reset dynamics restores the compiled defaults and clears accumulated neural state and learning.
+
+Confirmed Canvas adjustments update the editable design; use Save brain to export it. Adjustments made directly through Python do not rewrite your local design file. Update and save that design explicitly if the new values should become defaults for future builds.
+
 
 ## 10. Troubleshooting
 

@@ -224,7 +224,26 @@ def normalize(data: Any) -> dict:
         if identity in seen:
             raise DesignError(f"Duplicate connection: {edge['from']} → {edge['to']}.")
         seen.add(identity)
-    return {"schema": SCHEMA, "name": name, "nodes": normalized_nodes, "connections": normalized_edges}
+    result = {"schema": SCHEMA, "name": name, "nodes": normalized_nodes, "connections": normalized_edges}
+    if 'groups' in data:
+        if not isinstance(data['groups'],list):raise DesignError('Primitive groups must be a list.')
+        groups=[];names=set()
+        for group in data['groups']:
+            if not isinstance(group,dict):raise DesignError('Invalid primitive group.')
+            label=_check_name(group.get('name'),'Primitive name')
+            if label in names:raise DesignError('Primitive group names must be unique.')
+            names.add(label)
+            members=group.get('members',[]);ports=group.get('ports',{})
+            if not isinstance(members,list) or any(not isinstance(n,str) for n in members):
+                raise DesignError('Primitive members must be population names.')
+            # Removing a population also removes its visual group membership.
+            members=list(dict.fromkeys(n for n in members if n in by_name))
+            if not isinstance(ports,dict):raise DesignError('Primitive ports must be a mapping.')
+            ports={_check_name(k,'Port name'):v for k,v in ports.items() if v in members}
+            if members:groups.append({'name':label,'kind':_check_name(group.get('kind','custom')),
+                                      'members':members,'ports':ports})
+        result['groups']=groups
+    return result
 
 
 def inspect_design(data: dict) -> list[str]:
@@ -332,6 +351,27 @@ class Brain:
         d["connections"].append(edge)
         self._data = normalize(d)
         return self
+
+    def primitive(self, kind: str, name: str, *, neurons: int = 1,
+                  source: str | None = None, definition: dict | None = None,
+                  inputs: int = 1, contradictions: int = 0, width: int = 8, sources: dict | None = None) -> "Brain":
+        """Insert an editable named circuit; it expands to ordinary populations and connections."""
+        from .primitives import add_primitive
+        self._replace(add_primitive(self,kind,name,neurons=neurons,source=source,definition=definition,
+                                    inputs=inputs,contradictions=contradictions,width=width,sources=sources))
+        return self
+
+    def group(self, name: str, members: list[str], *, kind: str = 'custom', ports: dict | None = None) -> "Brain":
+        data=self.to_dict()
+        data.setdefault('groups',[]).append({'name':name,'kind':kind,'members':members,'ports':ports or {}})
+        self._data=normalize(data)
+        return self
+
+    def port(self, primitive: str, port: str) -> str:
+        """Return the actual population name behind a primitive port."""
+        for group in self._data.get('groups',[]):
+            if group['name']==primitive and port in group['ports']:return group['ports'][port]
+        raise DesignError('Primitive port not found.')
 
     def _append(self, node: dict) -> None:
         d = self.to_dict()

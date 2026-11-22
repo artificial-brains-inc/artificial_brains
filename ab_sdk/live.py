@@ -97,112 +97,16 @@ class LiveOutputStream(OutputStream):
 
 
 class TelemetryWindow:
+    """Attach to the persistent SDK workspace; closing a run leaves its tab open."""
     def __init__(self, client, design=None):
-        self.responses = set()
-        self.lock = threading.Lock()
-        self.closed = threading.Event()
-        self.server = None
-        threading.Thread(target=self._open, args=(client, design), daemon=True).start()
+        threading.Thread(target=self._open,args=(client,design),daemon=True).start()
 
     def _open(self, client, design):
         try:
-            self._serve(client, design)
+            from ab_designer.workspace import open_workspace
+            self.url=open_workspace(design,client=client)
         except Exception as exc:
-            if not self.closed.is_set():
-                print(f'[AB] Neuron telemetry unavailable: {type(exc).__name__}', flush=True)
-
-    def _serve(self, client, design):
-        self.client = client
-        response = client.http.get('/static/telemetry.html')
-        response.raise_for_status()
-        self.page = response.content
-        self.design = None
-        if design is not None:
-            from .design_submit import design_sha256
-            active = (client.status().get('package') or {}).get('active') or {}
-            if active.get('design_sha256') == design_sha256(design):
-                self.design = design
-        window = self
-        prefix = '/' + secrets.token_urlsafe(24) + '/'
-
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *args):
-                pass
-
-            def do_GET(self):
-                if (self.headers.get('Host') != window.address or
-                    self.headers.get('Origin', window.origin) != window.origin or
-                    not self.path.startswith(prefix)):
-                    self.send_error(403)
-                    return
-                route = self.path[len(prefix):]
-                if route == 'events':
-                    params = {'telemetry': 1, 'cursor': self.headers.get('Last-Event-ID', '')}
-                    try:
-                        with client.http.stream('GET', '/api/brain/stream', params=params,
-                                                timeout=httpx.Timeout(60, connect=10)) as upstream:
-                            if upstream.status_code != 200:
-                                self.send_error(upstream.status_code)
-                                return
-                            with window.lock:
-                                window.responses.add(upstream)
-                            try:
-                                self.send_response(200)
-                                self.send_header('Content-Type', 'text/event-stream')
-                                self.send_header('Cache-Control', 'no-store')
-                                self.end_headers()
-                                for line in upstream.iter_lines():
-                                    if window.closed.is_set():
-                                        return
-                                    self.wfile.write((line + '\n').encode())
-                                    if not line:
-                                        self.wfile.flush()
-                            finally:
-                                with window.lock:
-                                    window.responses.discard(upstream)
-                    except (OSError, httpx.HTTPError):
-                        pass
-                    return
-                if route == '':
-                    body, mime = window.page, 'text/html; charset=utf-8'
-                elif route == 'design':
-                    body, mime = json.dumps(window.design).encode(), 'application/json'
-                else:
-                    self.send_error(404)
-                    return
-                self.send_response(200)
-                self.send_header('Content-Type', mime)
-                self.send_header('Content-Length', str(len(body)))
-                self.send_header('Cache-Control', 'no-store')
-                self.send_header('X-Content-Type-Options', 'nosniff')
-                self.send_header('Referrer-Policy', 'no-referrer')
-                self.end_headers()
-                self.wfile.write(body)
-
-        with self.lock:
-            if self.closed.is_set():
-                return
-            self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-            self.server.daemon_threads = True
-            self.address = f'127.0.0.1:{self.server.server_port}'
-            self.origin = 'http://' + self.address
-            self.url = self.origin + prefix
-            self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-            self.thread.start()
-        print('[AB] Neuron telemetry: ' + self.url, flush=True)
-        try:
-            webbrowser.open(self.url)
-        except Exception:
-            pass  # The printed local URL remains usable on headless hosts.
+            print(f'[AB] Workspace unavailable: {exc}',flush=True)
 
     def close(self):
-        if self.closed.is_set():
-            return
-        self.closed.set()
-        with self.lock:
-            responses = list(self.responses)
-        for response in responses:
-            response.close()
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
+        pass  # The workspace belongs to the project, not to one controller run.

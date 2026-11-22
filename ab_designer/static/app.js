@@ -3,8 +3,8 @@
 // Standalone UI for a PUBLIC design graph. Never constructs the internal neural graph.
 const $ = (id) => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
-const STAGE_W = 2600;
-const STAGE_H = 1800;
+let STAGE_W = 2600;
+let STAGE_H = 1800;
 const NODE_W = 210;
 const NODE_H = 128;
 const RHYTHMS = ['high-gamma', 'gamma', 'beta', 'alpha', 'theta', 'delta', 'dopaminergic'];
@@ -48,7 +48,7 @@ async function api(path, payload=null) {
   catch { throw new Error('Cannot reach the local designer. Check that it is still running.'); }
   let body;
   try { body = await response.json(); } catch { throw new Error('Local designer returned an invalid response.'); }
-  if (!response.ok) throw new Error(body.error || 'Request failed');
+  if (!response.ok) {const error=new Error(body.error || 'Request failed');Object.assign(error,{status:response.status,code:body.code,state:body.state});throw error;}
   return body;
 }
 function syncState(result, {codeReset=true}={}) {
@@ -69,6 +69,7 @@ function commit(draft, {record=true, preserveCode=false, undoSnapshot=null}={}) 
   const snapshot = undoSnapshot || (design ? clone(design) : null);
   $('draftStatus').textContent = 'Saving…';
   return enqueue(async () => {
+    if(deviceInfo.state==='RUNNING'&&snapshot){for(const n of draft.nodes){const old=snapshot.nodes.find(x=>x.name===n.name),current=getNode(n.name);if(n.kind==='opu'&&old&&current&&n.tnorm===old.tnorm&&current.tnorm!==old.tnorm){if(current.tnorm===undefined)delete n.tnorm;else n.tnorm=current.tnorm;}}}
     const response = await api('/api/design', {design:draft});
     if (record && snapshot) { undoStack.push(snapshot); if (undoStack.length > 60) undoStack.shift(); redoStack=[]; }
     syncState(response, {codeReset:!preserveCode});
@@ -161,6 +162,7 @@ function nodeClick(name) {
     return;
   }
   selection={kind:'node',name};render();
+  if(getNode(name)?.kind==='opu')openTNorm(name);
 }
 function finishConnect(source,target){
   const existing=design.connections.some(e=>e.from===source&&e.to===target);
@@ -228,6 +230,10 @@ function edgeGeometry(a,b){
   const start=boundary(a,ux,uy,offset),end=boundary(b,-ux,-uy,-offset);
   return {d:`M ${start.x} ${start.y} L ${end.x} ${end.y}`,mx:(start.x+end.x)/2-uy*12,my:(start.y+end.y)/2+ux*12-5,tx:end.x,ty:end.y};
 }
+function edgeLabel(edge){
+  if(edge.role==='operand')return `${edge.type==='inh'?'−':'+'}${edge.units??1} unit${(edge.units??1)===1?'':'s'}`+(edge.type==='inh'&&(edge.strength??1)!==1?` · INH ×${edge.strength}`:'');
+  return edge.type==='inh'?`INH ×${edge.strength??1}`:'';
+}
 function renderEdges(){
   const svg=$('edgeLayer');
   while(svg.lastChild && svg.lastChild.tagName.toLowerCase()!=='defs') svg.removeChild(svg.lastChild);
@@ -245,9 +251,9 @@ function renderEdges(){
     hit.addEventListener('click',(ev)=>{ev.stopPropagation();selection={kind:'edge',from:edge.from,to:edge.to};render();});
     hit.addEventListener('keydown',(ev)=>{if(ev.key==='Enter'){selection={kind:'edge',from:edge.from,to:edge.to};render();}});
     g.appendChild(visible);g.appendChild(hit);
-    if(edge.type==='inh'){
+    if(edgeLabel(edge)){
       const text=makeSvg('text',{x:geom.mx,y:geom.my,fill:'#eab2bc',class:'edge-label','text-anchor':'middle'});
-      text.textContent=`INH ×${edge.strength??1}`;g.appendChild(text);
+      text.textContent=edgeLabel(edge);g.appendChild(text);
     }
     svg.appendChild(g);
   }
@@ -374,6 +380,7 @@ function renderInspector(){
       if(value===node.name)return;
       const d=clone(design);const item=d.nodes.find(n=>n.name===node.name);item.name=value;
       d.connections.forEach(e=>{if(e.from===node.name)e.from=value;if(e.to===node.name)e.to=value;if(e.reward===node.name)e.reward=value;(e.rewards||[]).forEach(r=>{if(r.source===node.name)r.source=value;});});
+      for(const g of d.groups||[]){g.members=g.members.map(n=>n===node.name?value:n);for(const key of Object.keys(g.ports))if(g.ports[key]===node.name)g.ports[key]=value;}
       selection={kind:'node',name:value};commit(d);
     });
     if(node.kind==='output')addField(box,'Output neurons',node.neurons||1,'number',null,value=>{
@@ -389,6 +396,7 @@ function renderInspector(){
         commit(d);
       });
       const field=addField(box,'TNorm',node.tnorm==null?'':String(node.tnorm),'number',null,value=>{
+        if(deviceInfo.state==='RUNNING'){openTNorm(node.name);editTNorm(value);return;}
         const d=clone(design),target=d.nodes.find(n=>n.name===node.name);
         if(value.trim()===''&&node.rhythm==='high-gamma')delete target.tnorm;
         else target.tnorm=Number(value);
@@ -489,7 +497,8 @@ function render(){
   $('stats').textContent=`${design.nodes.length} populations · ${design.connections.length} connections`;
   $('undoBtn').disabled=undoStack.length===0;$('redoBtn').disabled=redoStack.length===0;
   $('zoomLabel').textContent=`${Math.round(zoom*100)}%`;
-  renderEdges();renderNodes();renderInspector();
+  growStage();renderGroups();renderEdges();renderNodes();renderInspector();
+  if(selection?.kind!=='node'||selection.name!==popupName)closeTNorm();
 }
 function setZoom(v){
   zoom=Math.min(1.5,Math.max(.5,Math.round(v*10)/10));
@@ -549,7 +558,7 @@ function exportSVG(){
   for(const edge of design.connections){
     const a=getNode(edge.from),b=getNode(edge.to);const g=edgeGeometry(a,b);
     lines.push(`<path d="${g.d}" stroke="${edge.type==='inh'?'#f39ba9':'#2ea8c8'}" stroke-width="2.5" fill="none" marker-end="url(#${edge.type==='inh'?'bar':'arrow'})"/>`);
-    if(edge.type==='inh')lines.push(`<text x="${g.mx}" y="${g.my}" text-anchor="middle" fill="#f39ba9" font-family="sans-serif" font-weight="bold" font-size="11">INH ×${edge.strength??1}</text>`);
+    if(edgeLabel(edge))lines.push(`<text x="${g.mx}" y="${g.my}" text-anchor="middle" fill="#f39ba9" font-family="sans-serif" font-weight="bold" font-size="11">${escapeXml(edgeLabel(edge))}</text>`);
   }
   for(const n of design.nodes){
     const c=nodeCenter(n);
@@ -571,29 +580,17 @@ function updatePythonStatus(){
 async function setView(view){
   if(view===activeView)return;
   await pending;
-  // Never discard edited Python when returning to the canvas.
-  // Invalid Python leaves the developer in Python view with the error visible.
-  if(view==='canvas'&&codeDirty){
-    const applied=await applyPython();
-    if(applied!==true){$('codeEditor').focus();return;}
+  if(view==='canvas'&&codeDirty){const applied=await applyPython();if(applied!==true){$('codeEditor').focus();return;}}
+  closeTNorm();activeView=view;$('workspace').className='workspace '+view+'-mode';
+  document.querySelector('.leftbar').hidden=document.querySelector('.rightbar').hidden=view!=='canvas';
+  for(const [id,name,tab] of [['editorCanvas','canvas','viewCanvas'],['pythonWorkspace','python','viewPython'],['telemetryWorkspace','telemetry','viewTelemetry'],['applicationWorkspace','application','viewApplication']]){
+    $(id).hidden=view!==name;$(tab).classList.toggle('active',view===name);$(tab).setAttribute('aria-selected',String(view===name));
   }
-  activeView=view;
-  const python=view==='python';
-  $('workspace').classList.toggle('python-mode',python);
-  $('workspace').classList.toggle('canvas-mode',!python);
-  for(const id of ['editorCanvas'])$(id).hidden=python;
-  document.querySelector('.leftbar').hidden=python;
-  document.querySelector('.rightbar').hidden=python;
-  $('pythonWorkspace').hidden=!python;
-  $('viewCanvas').classList.toggle('active',!python);
-  $('viewPython').classList.toggle('active',python);
-  $('viewCanvas').setAttribute('aria-selected',String(!python));
-  $('viewPython').setAttribute('aria-selected',String(python));
-  $('brainName').disabled=python;
-  if(python&&!codeDirty)$('codeEditor').value=generatedCode;
+  $('brainName').disabled=view!=='canvas';
+  if(view==='python'){if(!codeDirty)$('codeEditor').value=generatedCode;$('codeEditor').focus();}
+  if(view==='telemetry'&&!$('telemetryFrame').getAttribute('src'))$('telemetryFrame').src='/telemetry/';
+  if(view==='application')await refreshApplication();
   updatePythonStatus();
-  if(python)$('codeEditor').focus();
-  else $('viewport').focus({preventScroll:true});
 }
 
 // Device operations are invoked by the local Python SDK. Nothing is compiled,
@@ -608,10 +605,13 @@ function updateDeviceControls(){
   $('deviceRun').disabled=deviceBusy||!deviceInfo.ready_for_run;
   $('deviceStop').disabled=deviceBusy||state!=='RUNNING';
   $('deviceRefresh').disabled=deviceBusy;
+  $('deviceReset').disabled=deviceBusy||!['READY','STOPPED'].includes(state);
+  if(state!=='RUNNING')closeTNorm();
+  updateTNormPopup();
 }
 async function refreshDevice(){
   if(deviceBusy)return;
-  try{deviceInfo=await api('/api/device/status');}
+  try{deviceInfo=await api('/api/device/status');receiveTuning(deviceInfo.tuning);}
   catch(e){deviceInfo={connected:false,state:'DISCONNECTED',ready_for_run:false};}
   updateDeviceControls();
 }
@@ -619,18 +619,21 @@ async function deviceAction(action){
   if(deviceBusy)return;
   // The full-width Python editor must apply its current Brain design first.
   if(codeDirty){const applied=await applyPython();if(applied!==true)return;}
-  await pending;
-  deviceBusy=true;
+  await pending;await tuner.idle();
+  deviceBusy=true;$('deviceNotice').hidden=true;
   deviceInfo.ready_for_run=false;
   updateDeviceControls();
-  const label={build:'Building this brain on Prima-Lux',run:'Starting brain',stop:'Stopping and saving brain'}[action];
+  const label={build:'Building this brain on Prima-Lux',run:'Starting brain',stop:'Stopping and saving brain',reset:'Resetting neural dynamics'}[action];
   $('deviceStatus').textContent=label+'…';
   try{
     const result=await api('/api/device/'+action,{});
-    if(action==='build')toast('Prima-Lux reported READY.');
-    else if(action==='run')toast('Prima-Lux confirmed RUNNING. Your application supplies live inputs.');
+    if(result.tuning){receiveTuning(result.tuning);if(action==='reset')applyTuningToDraft(result.tuning);}
+    if(['build','run','reset'].includes(action))$('telemetryFrame').contentWindow?.postMessage({type:'ab-reconnect'},location.origin);
+    if(action==='build')toast('Brain installed · READY.');
+    else if(action==='run'){toast(result.application?.running?'Brain and controller running.':'Brain running.');if(result.application?.configured||result.application?.panel?.url){applicationInfo=result.application;await setView('application');}}
+    else if(action==='reset')toast('Neural dynamics reset. Compiled TNorm values restored.');
     else toast('Prima-Lux confirmed STOPPED and saved.');
-  }catch(e){toast(e.message,true);}
+  }catch(e){$('deviceNoticeText').textContent=e.message;$('deviceNotice').hidden=false;toast(e.message,true);}
   finally{deviceBusy=false;await refreshDevice();}
 }
 
@@ -642,6 +645,7 @@ function wireEvents(){
   $('undoBtn').onclick=undo;$('redoBtn').onclick=redo;
   $('viewCanvas').onclick=()=>setView('canvas');$('viewPython').onclick=()=>setView('python');
   $('deviceRefresh').onclick=refreshDevice;
+  $('dismissNotice').onclick=()=>{$('deviceNotice').hidden=true;};
   $('deviceBuild').onclick=()=>deviceAction('build');
   $('deviceRun').onclick=()=>deviceAction('run');
   $('deviceStop').onclick=()=>deviceAction('stop');
@@ -661,7 +665,7 @@ function wireEvents(){
   viewport.addEventListener('pointerdown',event=>{
     if(event.button!==0 || connectMode || event.target.closest('.node,.edge-hit,button,input,select,textarea'))return;
     event.preventDefault();
-    selection=null;renderInspector();renderNodes();renderEdges();
+    selection=null;closeTNorm();renderInspector();renderNodes();renderEdges();
     panning={id:event.pointerId,x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop,moved:false};
     viewport.setPointerCapture(event.pointerId);viewport.classList.add('panning');
   });
@@ -706,8 +710,7 @@ function wireEvents(){
   });
 }
 async function start(){
-  wireEvents();setZoom(1);
-  try{const response=await api('/api/design');syncState(response);setTimeout(()=>{$('viewport').scrollLeft=200;$('viewport').scrollTop=170;},60);await refreshDevice();}
+  wireEvents();wireWorkspace();setZoom(1);
+  try{const response=await api('/api/design');syncState(response);setTimeout(()=>{$('viewport').scrollLeft=200;$('viewport').scrollTop=170;},60);await refreshDevice();if(location.hash==='#telemetry')await setView('telemetry');}
   catch(e){$('draftStatus').textContent='Unavailable';toast(e.message,true);}
 }
-start();

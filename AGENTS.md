@@ -1,6 +1,6 @@
 # Artificial Brains Agent Guide
 
-Use this file with the README and the **Introductory Guide to Building an Artificial Brain, version 0.4**. Build the user's requested behavior through the public SDK and the guideline to build an artificial brain. Keep existing application behavior and unrelated components intact.
+Use this file with the README and the **Introductory Guide to Building an Artificial Brain, version 0.4**. Build the user's requested behavior through the public SDK and the guide to building an artificial brain. Keep existing application behavior and unrelated components intact.
 
 ## Scope and responsibilities
 
@@ -20,9 +20,11 @@ brain.input("SENSE", 64)
 brain.opu("RELAY", "high-gamma", 10)
 brain.opu("STATE", "theta", 3)
 brain.output("ACTION")
+
 brain.connect("SENSE", "RELAY")
 brain.connect("RELAY", "STATE")
 brain.connect("STATE", "ACTION")
+
 brain.save("brain.abdesign.json")
 ```
 
@@ -81,7 +83,7 @@ brain.connect("B", "RESULT", "inh", role="operand", units=1)
 - For the native AND construction, use Delta T2 operands, a local Delta T2 OR helper, and a distinct Delta T2 AND target. The helper contributes one negative operand unit.
 - Preserve XOR's two units of OR. Do not replace them with an ordinary one-unit edge.
 - NOT requires a positive reference. Silence cannot generate positive evidence. Silent comparison rails alone do not distinguish equality from absent input.
-- Keep cancellation and signed contradiction at the recipe's units and default inhibition strength..
+- Keep cancellation and signed contradiction at the recipe's units and default inhibition strength.
 - A veto or reset is a separate suppression role. Do not apply hard-veto scaling to AND, XOR, or subtraction merely because an edge is inhibitory.
 - ADD and SUB can retain history. Use settling or a local reset/canonicalization stage for independent successive operations; do not reset the whole brain after every observation.
 
@@ -106,7 +108,7 @@ brain.connect("B", "RESULT", "inh", role="operand", units=1)
 - Encode intended importance through meaningful rule multiplicity or explicit units. Do not duplicate sensor inputs or normalize measured rule firing to manufacture equal importance.
 - For reaching, supply observed object position, actual gripper position, and proprioception. Build the signed difference neurally.
 
-## Motor states memory and output lifetime
+## Motor states, memory, and output lifetime
 
 - Starting motor chain: Theta T3 → Theta T2.01 → Beta T5 → bistable output. Rules can feed that pathway; do not add a serial Delta action stage by default.
 - Use fast motor Beta T5 to inhibit an antagonist's Theta T2.01 and, when needed, clear its output. Competition follows physical antagonists; independent joints may act simultaneously.
@@ -116,21 +118,21 @@ brain.connect("B", "RESULT", "inh", role="operand", units=1)
 - Association can combine Beta T5 streams in Delta T2. The guide's recurrent recall chain returns through distinct Delta/Alpha populations to the same association OPU. Mark the return as feedback.
 - Follow neuron identity and temporal patterns. Persistent firing alone does not establish what information is retained.
 
-
-## Learning Rules
+## Learning rules
 
 ### Neural dynamics come first
 
 Our artificial brains compute through neural dynamics. Connected populations interact, form associations, retain information, recall earlier states, and produce actions through their activity and feedback.
 
-**These capabilities do not depend on adding a learning rule.** A network with static connections can still compute and hold memory. Static describes the connection TNorm, not the activity or capabilities of the brain.
+**These capabilities do not depend on adding a learning rule.** A network with static connections can still compute and hold memory.
+
+`rule="static"` means the connection does not change through a learning rule. The network still computes and retains information through neural dynamics. Explicit live TNorm adjustments can still change connection strengths.
 
 Learning rules serve a different purpose: **adjusting behavior through experience**. They change how strongly particular pathways influence the network—for example, increasing opposition to an unwanted response or reducing inhibition so another response becomes available.
 
 First establish the intended behavior through neural dynamics. Then add learning where a specific behavior should adapt. Inhibitory connections are especially useful for adjusting how existing computations influence behavior.
 
 Learning on excitatory connections between OPUs can alter the computation itself. Use it deliberately when that relationship should change.
-
 
 ### What eligibility means
 
@@ -170,8 +172,7 @@ An ordinary OPU can inhibit the reward OPU. That inhibitory connection can use S
 
 Do not use a direct dopaminergic self-connection as an inhibitory brake: dopaminergic spikes provide learning signals rather than ordinary inhibitory drive. Give the ordinary inhibitory OPU an activating pathway, and observe that reward activity can end and respond again to a later event.
 
-
-## Save build and run
+## Save, build, and run
 
 The Canvas Python editor and direct `--brain brain.py` import accept literal Brain declarations. For loops, variables, or functions, run an ordinary Python generator and build its saved JSON:
 
@@ -190,8 +191,31 @@ Wait for READY before running. Build installs the design; Run uses the installed
 - Outputs are pushed for every completed timestep, including unchanged and empty states. Use `session.on_output()` for raw frames and a decoder with `session.on_command()` or RobotLoop for body commands.
 - `RobotLoop.tick_hz` controls sensor polling, not neural timing or output delivery. Keep output callbacks short. Do not register the same motor callback both through RobotLoop's `command_executor` and `session.on_command()`.
 - Respect the actual decoder representation. Actuation counts and neuron-identified events are not interchangeable. Apply body limits independently of decoding.
-- `AB_TELEMETRY=true` opens neuron telemetry when the session starts. Inspect individual neurons and their histories, including inactivity; do not reduce the requested view to an OPU active flag. Freeze pauses the display only.
-- Stop and wait for neural-state saving before power-off. Reset dynamics discards accumulated neural state, not the body's physical state. Start a fresh session after resetting.
+- `AB_TELEMETRY=true` opens or reuses the shared SDK workspace when the session starts. Neuron activity shares the interface with Canvas, Python, and Application. Inspect individual neurons and their histories, including inactivity. Freeze pauses only the display.
+- Closing a browser tab does not stop the Brain or controller. Stop and wait for neural-state saving before power-off.
+- Reset dynamics discards accumulated neural state, not the body's physical state. Start a fresh session after resetting.
+
+## Application integration in the SDK workspace
+
+- Configure the controller entry point, arguments, and Python environment through Application → Configure application. Settings are stored in `ab.workspace.json`.
+- Workspace Run starts the installed Brain and the configured controller after Build reports READY. Do not also launch a duplicate controller from a terminal.
+- Use `ApplicationUI` from `ab_sdk.workspace` for controller-owned buttons and readouts. Register callbacks with `panel.button()`, update readouts with `panel.value()`, and call `panel.start()` and `panel.close()` during application startup and cleanup.
+- Button callbacks run on a separate controls thread. Keep them short or forward actions to the controller's queue. Continue using the existing SDK session for sensory inputs and neural outputs.
+- To display an existing web interface, configure its URL or project HTML file. The controller must start any required web server. Embedding requires the web interface to permit it.
+- Preserve session-stop and robot cleanup in the application's shutdown path. Closing `ApplicationUI` only disconnects its panel.
+- Controllers can also run independently through `ab run` or their Python entry point. The Designer is optional.
+
+## Live TNorm from Python
+
+- Use `PrimaLuxClient` from `ab_sdk.primalux`. Read current tuning with `device.tuning()` and update named OPUs with `device.tune({"OPU_NAME": value}, state=state)`.
+- TNorm belongs to the OPU. Do not restrict tuning to STDP3 or STDP3_SLOW connections. Preserve the existing range and precision.
+- Live adjustments go directly to Prima-Lux and apply between neural timesteps. They do not require recompilation, a cloud request, or a dynamics reset.
+- The installed Brain must contain tuning instructions. If they are missing after a fresh build, report the builder/compiler installation issue to the device owner. Do not repeatedly rebuild or modify the SDK, server, or device software unless the user requests that repair.
+- Send tuning requests sequentially and use the returned state for the next update. While a request is pending, retain the latest desired values instead of queuing every intermediate slider position.
+- If the installed Brain or tuning state changes, refresh and check it before continuing. Do not replay queued changes onto a different Brain.
+- Keep blocking tuning requests out of sensor and neural-output callbacks. Use the controller's own tuning worker or command queue.
+- Stop saves live TNorm with neural state. Reset dynamics restores compiled defaults. Python tuning does not rewrite the local Brain design; save intended defaults explicitly.
+- Use Python scripts for terminal tuning. Do not invent an `ab device tune` command or undocumented SDK arguments.
 
 ## Deliver a usable brain
 

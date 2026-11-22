@@ -35,6 +35,8 @@ def to_python(brain: Brain) -> str:
         if "reward" in edge: args += f", reward={edge['reward']!r}"
         if "reward_type" in edge: args += f", reward_type={edge['reward_type']!r}"
         lines.append(f"brain.connect({args})")
+    for group in d.get('groups',[]):
+        lines.append(f"brain.group({group['name']!r}, {group['members']!r}, kind={group['kind']!r}, ports={group['ports']!r})")
     lines += ["", "brain.render()", ""]
     return "\n".join(lines)
 
@@ -99,6 +101,8 @@ def parse_python(source: str, *, previous: Brain | None = None) -> Brain:
                 "opu": {"name", "rhythm", "tnorm"},
                 "output": {"name", "n"},
                 "connect": {"source", "target", "connection", "strength", "role", "units", "rule", "reward", "reward_type", "rewards"},
+                "primitive": {"kind", "name", "neurons", "source", "definition", "inputs", "contradictions", "width", "sources"},
+                "group": {"name", "members", "kind", "ports"},
                 "render": set(),
                 "save": set(),
             }

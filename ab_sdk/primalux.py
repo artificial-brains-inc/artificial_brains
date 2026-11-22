@@ -154,6 +154,24 @@ class PrimaLuxClient:
         except httpx.RequestError as exc:
             raise PrimaLuxError(f'Cannot reach Prima-Lux at {self.url}: {exc.__class__.__name__}') from exc
 
+    def tuning(self) -> dict[str, Any]:
+        """Read public TNorm values for the currently installed brain."""
+        return self._request('GET', '/api/brain/tuning')
+
+    def tune(self, values: dict[str, float], *, state: dict | None = None) -> dict[str, Any]:
+        """Apply TNorm at the next step boundary, preserving accumulated dynamics.
+
+        Pass the state returned by tuning() to bind a UI edit to that brain and
+        revision. A stale edit is rejected; it is never replayed onto another brain.
+        """
+        from ab_designer.model import _tnorm
+        state = self.tuning() if state is None else state
+        if not state.get('available'):
+            raise PrimaLuxError(state.get('message','Live TNorm is unavailable.'))
+        return self._request('POST','/api/brain/tuning',json={
+            'package_id':state['package_id'],'session_id':state['session_id'],
+            'revision':state['revision'],'values':{name:_tnorm(v) for name,v in values.items()}},timeout=60)
+
     def status(self) -> dict[str, Any]:
         return self._request('GET', '/api/status')
 

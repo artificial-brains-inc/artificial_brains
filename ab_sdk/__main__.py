@@ -69,7 +69,7 @@ def _design(args,project:Path):
     from ab_designer.server import serve
     from ab_designer import Brain
     brain=_select_design(project,args.brain) if args.brain else (find_design(project) or Brain('Untitled Brain'))
-    serve(brain,port=args.port,open_browser=not args.no_browser,env_path=_env(project, args.env))
+    serve(brain,port=args.port,open_browser=not args.no_browser,env_path=_env(project, args.env),project=project)
     return 0
 
 
