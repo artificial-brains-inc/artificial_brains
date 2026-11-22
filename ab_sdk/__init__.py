@@ -1,5 +1,6 @@
 """Artificial Brains SDK Python interface."""
 
+from .autotune import autotune, AutoTuneResult, AutoTuneError, TuneTrial
 from .unified_client import ABClient
 from .decoder import GenericSpikeDecoder
 from .encoder import SpikeEncoder
@@ -11,6 +12,7 @@ from .primalux import (
 )
 
 __all__ = [
+    "autotune", "AutoTuneResult", "AutoTuneError", "TuneTrial",
     "ABClient", "RealtimeSession", "SpikeEncoder",
     "GenericSpikeDecoder", "RobotLoop", "RewardPayload", "PrimaLuxClient",
     "PrimaLuxConfig", "PrimaLuxSession", "PrimaLuxError",

@@ -74,7 +74,7 @@ class DesignerServer(ThreadingHTTPServer):
 
 class DesignerHandler(BaseHTTPRequestHandler):
     server: DesignerServer
-    server_version = "ABWorkspace/0.4.5"
+    server_version = "ABWorkspace/0.4.6"
 
     def log_message(self, fmt: str, *args) -> None:
         # Quiet except for errors; avoid logging developer data.
@@ -116,7 +116,7 @@ class DesignerHandler(BaseHTTPRequestHandler):
         if path == '/api/workspace/ping':
             if not secrets.compare_digest(self.headers.get('X-AB-Workspace',''),self.server.workspace_token):
                 self._json({'error':'Workspace identity required'},403);return
-            self._json({'workspace':1,'version':'0.4.5'});return
+            self._json({'workspace':1,'version':'0.4.6'});return
         if path == '/api/device/tuning':
             try:
                 with self.server.device() as device: self._json(self._tuning_state(device))
@@ -162,7 +162,7 @@ class DesignerHandler(BaseHTTPRequestHandler):
                     "design": self.server.brain.to_dict(),
                     "code": self.server.brain.to_python(),
                     "warnings": self.server.brain.validate(),
-                } if path == "/api/design" else {"ok": True, "mode": "designer", "version": "0.4.5"}
+                } if path == "/api/design" else {"ok": True, "mode": "designer", "version": "0.4.6"}
             self._json(result)
             return
         static_map = {"/": "index.html", "/index.html": "index.html", "/styles.css": "styles.css", "/app.js": "app.js", "/favicon.png": "favicon.png", "/artificial-brains-wordmark.svg": "artificial-brains-wordmark.svg",

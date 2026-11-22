@@ -1,4 +1,5 @@
 include README.md LICENSE WORKSPACE.md
+include AUTOTUNE.md
 recursive-include ab *.py
 recursive-include ab_sdk *.py
 prune tests
