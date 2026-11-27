@@ -1,5 +1,8 @@
 include README.md LICENSE WORKSPACE.md
 include AUTOTUNE.md
+include AGENT.md
+include WEIGHTS.md
+recursive-include ab_designer/agent/resources *.md
 recursive-include ab *.py
 recursive-include ab_sdk *.py
 prune tests
@@ -9,3 +12,4 @@ global-exclude __pycache__ *.py[cod] .env .env.* *.pem *.key *.token
 recursive-include ab_designer *.py *.css *.js *.html *.svg *.png
 
 prune docs
+include AGENTS.md

@@ -6,16 +6,18 @@
   <title>Artificial Brains — Workspace</title>
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/agent.css" />
   <script defer src="/tuning.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/workspace.js"></script>
+  <script defer src="/agent.js"></script>
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="identity" aria-label="Artificial Brains Designer">
         <img class="brand-logo" src="/artificial-brains-wordmark.svg" alt="Artificial Brains" />
-        <span class="designer-caption">WORKSPACE <span class="version">/ 0.4.5</span></span>
+        <span class="designer-caption">WORKSPACE <span class="version">/ 0.4.9</span></span>
       </div>
       <div class="project-name-area"><span class="overline">Brain name</span><input id="brainName" maxlength="80" value="Untitled Brain" aria-label="Brain name" spellcheck="false" /></div>
       <div class="header-actions">
@@ -33,6 +35,7 @@
         <button class="view-tab" id="viewPython" role="tab" aria-selected="false" aria-controls="pythonWorkspace">Python</button>
         <button class="view-tab" id="viewTelemetry" role="tab" aria-selected="false" aria-controls="telemetryWorkspace">Neuron activity</button>
         <button class="view-tab" id="viewApplication" role="tab" aria-selected="false" aria-controls="applicationWorkspace">Application</button>
+        <button class="view-tab" id="viewAgent" role="tab" aria-selected="false" aria-controls="agentWorkspace">Agent</button>
       </nav>
       <div class="device-state"><span class="device-indicator" id="deviceIndicator"></span><strong id="deviceStatus">Prima-Lux · Not connected</strong></div>
       <div class="device-actions">
@@ -101,6 +104,28 @@
         <div id="applicationWeb" class="application-web" hidden><p>If this interface refuses embedding, <a id="applicationLink" target="_blank" rel="noopener noreferrer">open it in its own window</a>.</p><iframe id="applicationFrame" title="Developer application" sandbox="allow-scripts allow-forms allow-same-origin allow-downloads"></iframe></div>
         <details class="application-console"><summary>Controller log</summary><pre id="applicationLog">The controller has not started.</pre></details>
       </section>
+      <section id="agentWorkspace" class="agent-workspace" role="tabpanel" aria-labelledby="viewAgent" hidden>
+        <header class="agent-heading"><div><span class="overline">BUILD WITH YOUR MODEL</span><h1>Brain agent</h1><p id="agentProvider">Configure your model in the project .env.</p></div><button id="agentSetup" class="button-outline">Connection settings</button></header>
+        <div class="agent-columns">
+          <div class="agent-conversation">
+            <div id="agentMessages" class="agent-messages" role="log" aria-label="Agent conversation"><div class="agent-welcome"><h2>Describe what you want to build.</h2><p>Tell the agent about your sensors, actuators, and goals. It can create an editable brain and a complete project, then use your run observations to revise it.</p><p>Generated files appear alongside the conversation.</p></div></div>
+            <div id="agentError" class="agent-error" role="alert" hidden></div>
+            <div class="agent-activity"><span id="agentPhase" role="status">Ready</span><button id="agentStop" class="button-quiet" disabled>Stop agent</button></div>
+            <details class="agent-events"><summary>Agent activity</summary><pre id="agentEvents">No operations yet.</pre></details>
+            <form id="agentForm" class="agent-compose"><label for="agentMessage" class="sr-only">Message the brain agent</label><textarea id="agentMessage" rows="4" placeholder="Three pressure sensors, three finger actuators, and two goals: pinch and grab…"></textarea><div><label class="agent-checkbox"><input id="agentAttachTelemetry" type="checkbox">Attach recorded neuron activity</label><button id="agentSend" type="submit" class="button-primary">Send</button></div></form>
+          </div>
+          <aside class="agent-project">
+            <div class="agent-section-heading"><h2>Project files</h2><span id="agentFileCount">0 files</span></div>
+            <select id="agentFiles" aria-label="Generated project files"><option value="">Files appear here</option></select>
+            <div class="agent-preview-bar"><span id="agentFileLabel">Select a file to review</span><button id="agentOriginal" class="button-quiet" disabled>View original</button></div>
+            <pre id="agentFileContent" class="agent-file-content" tabindex="0">Your original project remains available to read. Generated files are kept in this project's .ab-agent/project directory.</pre>
+            <button id="agentMoreFile" class="button-quiet" hidden>Load more lines</button>
+            <div class="agent-checks"><label id="agentLocalPermission" class="agent-checkbox"><input id="agentAllowLocal" type="checkbox">Allow the reviewed generator and verifier to run on this computer.</label><button id="agentChecks" class="button-outline" disabled>Run project checks</button><p id="agentCheckStatus">Checks run the generator, reload the brain, and run the project verifier.</p></div>
+            <div class="agent-project-actions"><button id="agentApply" class="button-outline" disabled>Load brain into Canvas</button><button id="agentDownload" class="button-primary" disabled>Download project ZIP</button></div>
+            <section class="agent-capture"><div class="agent-section-heading"><h2>Run observations</h2><button id="agentCapture" class="button-outline">Record neurons</button></div><p id="agentCaptureStatus">Record individual neuron activity while the brain runs.</p><p class="agent-muted">Captured locally. Select “Attach recorded neuron activity” when you want to send it to your model. Existing public project logs are also available to the agent.</p></section>
+          </aside>
+        </div>
+      </section>
       <section id="pythonWorkspace" class="python-workspace" role="tabpanel" aria-labelledby="viewPython" hidden>
         <div class="python-toolbar">
           <div class="python-heading"><span class="overline">BRAIN / CODE</span><h1>Python</h1><p>Write your brain using the same inputs, OPUs and connections as Canvas.</p></div>
@@ -148,6 +173,11 @@
       <p id="primitiveError" role="alert"></p><div class="dialog-actions"><button type="button" class="button-quiet" id="cancelPrimitive">Cancel</button><button type="submit" class="button-primary">Add circuit</button></div></form>
     </dialog>
     <dialog id="extractDialog" class="workspace-dialog"><form id="extractForm"><div class="overline">SAVE A PRIMITIVE</div><h2>Choose its populations</h2><label>Template name<input id="extractName" value="My primitive" required></label><div id="extractMembers" class="extract-members"></div><p class="muted">Internal connections and learning rules are preserved. External connections are made after inserting the template.</p><p id="extractError" role="alert"></p><div class="dialog-actions"><button type="button" class="button-quiet" id="cancelExtract">Cancel</button><button class="button-primary">Download primitive</button></div></form></dialog>
+    <dialog id="agentSettings" class="workspace-dialog"><span class="overline">YOUR MODEL CONNECTION</span><h2>Configure the project .env</h2><p>Choose a provider and model. Credentials stay in the local Python process and are excluded from generated downloads.</p><pre class="agent-env-example">AB_AGENT_PROVIDER=openai
+AB_AGENT_API_URL=https://api.openai.com/v1
+AB_AGENT_API_KEY=
+AB_AGENT_MODEL=
+AB_AGENT_PROTOCOL=responses</pre><p>OpenAI-compatible endpoints can use <code>AB_AGENT_PROTOCOL=chat</code>. Anthropic uses <code>AB_AGENT_PROVIDER=anthropic</code> with its API URL. Local Codex uses <code>AB_AGENT_PROVIDER=codex</code> and your existing CLI login.</p><p>For a model without native tool calling, set <code>AB_AGENT_TOOL_MODE=json</code>.</p><p>To enable agent-run generator and verifier checks, set <code>AB_AGENT_EXECUTION=local</code> (runs generated Python under your account), or <code>sandbox</code> with Linux bubblewrap. Otherwise review files and enable checks here.</p><p>Settings are read again on the next message. See <code>AGENT.md</code> for setup and MCP tools.</p><div class="dialog-actions"><button id="agentSettingsClose" class="button-primary">Done</button></div></dialog>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   </div>
 </body>

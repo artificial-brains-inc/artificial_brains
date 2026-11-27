@@ -172,6 +172,44 @@ class PrimaLuxClient:
             'package_id':state['package_id'],'session_id':state['session_id'],
             'revision':state['revision'],'values':{name:_tnorm(v) for name,v in values.items()}},timeout=60)
 
+    def get_weights(self, *, source: str | None = None, target: str | None = None,
+                    packed: bool = False, metadata: bool = False) -> dict[str, Any]:
+        """Read current W matrices at one step boundary; never stops or resets.
+
+        values[target_neuron][source_neuron] contains the raw float32 weight.
+        Pass packed=True for an exact compact snapshot, or metadata=True to
+        retrieve descriptors and the current write binding without matrix data.
+        """
+        from .weights import decoded
+        params = {'metadata': int(metadata)}
+        if source is not None: params['source'] = source
+        if target is not None: params['target'] = target
+        result = self._request('GET', '/api/brain/weights', params=params, timeout=60)
+        return result if packed or metadata else decoded(result)
+
+    def export_weights(self, path: str | Path, *, source: str | None = None,
+                       target: str | None = None) -> Path:
+        """Save an exact local .abweights.json snapshot. Replaces this file only."""
+        from .weights import write_file
+        return write_file(path, self.get_weights(source=source, target=target, packed=True))
+
+    def load_weights(self, snapshot: dict | str | Path, *, state: dict | None = None) -> dict[str, Any]:
+        """Load selected W matrices; preserve other dynamics and current TNorms.
+
+        This is an intentional replacement, including changes from learning
+        since the snapshot. While RUNNING, ordinary Stop saves the result.
+        A state from get_weights(metadata=True) binds an edit to that session;
+        otherwise fetch a fresh binding to restore an older matching file.
+        Requests are not automatically retried after a lost response.
+        """
+        from .weights import packed, read_file
+        data = packed(snapshot) if isinstance(snapshot, dict) else read_file(snapshot)
+        state = self.get_weights(metadata=True) if state is None else state
+        if data['layout_sha256'] != state.get('layout_sha256'):
+            raise ValueError('Weight file does not match the installed brain layout.')
+        data['binding'] = state['binding']
+        return self._request('POST', '/api/brain/weights', json=data, timeout=60)
+
     def status(self) -> dict[str, Any]:
         return self._request('GET', '/api/status')
 

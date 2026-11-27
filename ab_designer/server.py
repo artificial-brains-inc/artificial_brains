@@ -40,6 +40,8 @@ class DesignerServer(ThreadingHTTPServer):
         self.tuning_binding = None
         self.tuning_missing_after_build = False
         self.project = Path(project or Path.cwd()).resolve()
+        self.agent_service = None
+        self.agent_lock = threading.Lock()
         from .application import Application
         self.application = Application(self.project, self.env_path,
             f'http://127.0.0.1:{self.server_port}/', self.workspace_token, self.application_exited)
@@ -54,6 +56,8 @@ class DesignerServer(ThreadingHTTPServer):
                 self.application.error = 'Application ended; stopping the brain could not be confirmed.'
 
     def close_workspace(self):
+        if self.agent_service is not None:
+            self.agent_service.close()
         if self.application.running:
             self.application.stop()
             with self.device_lock:
@@ -63,6 +67,13 @@ class DesignerServer(ThreadingHTTPServer):
         from ab_sdk.primalux import PrimaLuxClient
         config = self.device_config
         return PrimaLuxClient(**config) if config else PrimaLuxClient.from_env(self.env_path or '.env')
+
+    def agent(self):
+        with self.agent_lock:
+            if self.agent_service is None:
+                from .agent.service import AgentService
+                self.agent_service = AgentService(self.project, self.env_path or self.project/'.env', self.device)
+            return self.agent_service
 
     def save_draft(self):
         if self.workspace_root:
@@ -74,7 +85,7 @@ class DesignerServer(ThreadingHTTPServer):
 
 class DesignerHandler(BaseHTTPRequestHandler):
     server: DesignerServer
-    server_version = "ABWorkspace/0.4.7"
+    server_version = "ABWorkspace/0.4.9"
 
     def log_message(self, fmt: str, *args) -> None:
         # Quiet except for errors; avoid logging developer data.
@@ -113,10 +124,12 @@ class DesignerHandler(BaseHTTPRequestHandler):
         if not self._allowed_host():
             return
         path = urlsplit(self.path).path
+        if path.startswith('/api/agent/'):
+            self._agent_get(path); return
         if path == '/api/workspace/ping':
             if not secrets.compare_digest(self.headers.get('X-AB-Workspace',''),self.server.workspace_token):
                 self._json({'error':'Workspace identity required'},403);return
-            self._json({'workspace':1,'version':'0.4.7'});return
+            self._json({'workspace':1,'version':'0.4.9'});return
         if path == '/api/device/tuning':
             try:
                 with self.server.device() as device: self._json(self._tuning_state(device))
@@ -162,11 +175,12 @@ class DesignerHandler(BaseHTTPRequestHandler):
                     "design": self.server.brain.to_dict(),
                     "code": self.server.brain.to_python(),
                     "warnings": self.server.brain.validate(),
-                } if path == "/api/design" else {"ok": True, "mode": "designer", "version": "0.4.7"}
+                } if path == "/api/design" else {"ok": True, "mode": "designer", "version": "0.4.9"}
             self._json(result)
             return
         static_map = {"/": "index.html", "/index.html": "index.html", "/styles.css": "styles.css", "/app.js": "app.js", "/favicon.png": "favicon.png", "/artificial-brains-wordmark.svg": "artificial-brains-wordmark.svg",
             "/workspace.js":"workspace.js", "/tuning.js":"tuning.js",
+            "/agent.js":"agent.js", "/agent.css":"agent.css",
             "/telemetry/":"telemetry.html", "/telemetry/telemetry.js":"telemetry.js", "/telemetry/telemetry.css":"telemetry.css"}
         filename = static_map.get(path)
         if filename is None:
@@ -185,6 +199,8 @@ class DesignerHandler(BaseHTTPRequestHandler):
         if not self._allowed_host():
             return
         path = urlsplit(self.path).path
+        if path.startswith('/api/agent/'):
+            self._agent_post(path); return
         if path.startswith('/api/application/'):
             self._application_action(path); return
         if path in ("/api/device/build", "/api/device/run", "/api/device/stop", "/api/device/reset"):
@@ -224,6 +240,69 @@ class DesignerHandler(BaseHTTPRequestHandler):
         except (UnicodeError, json.JSONDecodeError) as exc:
             self._json({"error": f"Invalid JSON: {exc}"}, 400)
 
+
+    def _agent_get(self, path):
+        try:
+            agent = self.server.agent()
+            if path == '/api/agent/status': self._json(agent.status()); return
+            if path == '/api/agent/file':
+                query = parse_qs(urlsplit(self.path).query)
+                self._json(agent.files.read_file(query.get('path',[''])[0],
+                    source=query.get('source',['draft'])[0],start=int(query.get('start',['0'])[0]),
+                    count=int(query.get('count',['500'])[0]))); return
+            if path == '/api/agent/package':
+                if agent.busy(): raise ValueError('Wait for the agent to finish before downloading.')
+                raw = agent.files.package()
+                self.send_response(200)
+                self.send_header('Content-Type','application/zip')
+                self.send_header('Content-Disposition','attachment; filename="artificial-brain-project.zip"')
+                self.send_header('Content-Length',str(len(raw)))
+                self.send_header('Cache-Control','no-store')
+                self.send_header('X-Content-Type-Options','nosniff')
+                self.end_headers();self.wfile.write(raw);return
+            self._json({'error':'Unknown agent route.'},404)
+        except (ValueError,RuntimeError,OSError,TypeError,KeyError) as exc:
+            self._json({'error':str(exc)[:800]},400)
+
+    def _agent_post(self, path):
+        try:
+            data = self._read_json()
+            agent = self.server.agent()
+            if path == '/api/agent/message':
+                with self.server.brain_lock: design = self.server.brain.to_dict()
+                agent.submit(data.get('message',''),design,attach_telemetry=data.get('attach_telemetry') is True)
+            elif path == '/api/agent/tool':
+                if not secrets.compare_digest(self.headers.get('X-AB-Workspace',''),self.server.workspace_token):
+                    self._json({'error':'Workspace identity required.'},403);return
+                with agent.lock:
+                    if agent.busy():raise ValueError('The UI agent is working. Wait before editing through an external agent.')
+                    from .agent.providers import Settings
+                    agent.settings=Settings.load(agent.env_path);agent.files.settings=agent.settings
+                    with self.server.brain_lock:
+                        agent.current_design=self.server.brain.to_dict()
+                    if agent.base_design_sha256 is None:
+                        with self.server.brain_lock:
+                            agent.base_design_sha256=self._brain_digest(self.server.brain)
+                    name=data.get('name','')
+                    agent.notify('External agent: '+name)
+                    self._json(agent.dispatch(name,data.get('arguments',{})));return
+            elif path == '/api/agent/stop': agent.stop()
+            elif path == '/api/agent/checks': agent.checks(allow_local=data.get('allow_local_execution') is True)
+            elif path == '/api/agent/capture/start': agent.capture.start()
+            elif path == '/api/agent/capture/stop': agent.capture.stop()
+            elif path == '/api/agent/apply':
+                if agent.busy(): raise ValueError('Wait for the agent to finish before loading its design.')
+                from .agent.projects import safe_path
+                brain = Brain.load(safe_path(agent.files.root,'brain.abdesign.json'))
+                with self.server.brain_lock:
+                    if data.get('expected_design_sha256') != self._brain_digest(self.server.brain):
+                        raise ValueError('Canvas changed since this chat. Send a new message to include the latest design before loading the revision.')
+                    self.server.brain._replace(brain);self.server.save_draft()
+                    self._json({'design':brain.to_dict(),'code':brain.to_python(),'warnings':brain.validate()});return
+            else:self._json({'error':'Unknown agent route.'},404);return
+            self._json({'ok':True})
+        except (ValueError,RuntimeError,OSError,TypeError,KeyError) as exc:
+            self._json({'error':str(exc)[:800]},400)
 
     @staticmethod
     def _brain_digest(brain: Brain) -> str:

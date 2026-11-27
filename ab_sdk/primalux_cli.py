@@ -17,12 +17,29 @@ def main(argv: list[str] | None = None) -> int:
         commands.add_parser(command)
     sense = commands.add_parser("sensors", help="Submit a sensory frame from a JSON file")
     sense.add_argument("json_file")
+    weights = commands.add_parser('weights', help='Export or load current brain weights')
+    weight_commands = weights.add_subparsers(dest='weight_operation', required=True)
+    export = weight_commands.add_parser('export', help='Save current weights to a local file')
+    export.add_argument('file')
+    export.add_argument('--source', help='Select a source population')
+    export.add_argument('--target', help='Select a receiving population')
+    restore = weight_commands.add_parser('import', help='Load weights from a matching brain layout')
+    restore.add_argument('file')
     args = parser.parse_args(argv)
 
     try:
         with PrimaLuxClient.from_env(args.env) as device:
             if args.operation == "status":
                 result = device.status()
+            elif args.operation == 'weights':
+                if args.weight_operation == 'export':
+                    path = device.export_weights(args.file, source=args.source, target=args.target)
+                    result = {'saved': str(path)}
+                else:
+                    result = device.load_weights(args.file)
+                    if not result.get('persisted'):
+                        print('Weights applied. Use Stop when finished to save the running neural state.',
+                              file=sys.stderr)
             elif args.operation == "events":
                 result = device.events()
             elif args.operation == "run":
