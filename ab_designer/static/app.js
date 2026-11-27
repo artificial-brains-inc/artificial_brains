@@ -583,13 +583,14 @@ async function setView(view){
   if(view==='canvas'&&codeDirty){const applied=await applyPython();if(applied!==true){$('codeEditor').focus();return;}}
   closeTNorm();activeView=view;$('workspace').className='workspace '+view+'-mode';
   document.querySelector('.leftbar').hidden=document.querySelector('.rightbar').hidden=view!=='canvas';
-  for(const [id,name,tab] of [['editorCanvas','canvas','viewCanvas'],['pythonWorkspace','python','viewPython'],['telemetryWorkspace','telemetry','viewTelemetry'],['applicationWorkspace','application','viewApplication']]){
+  for(const [id,name,tab] of [['editorCanvas','canvas','viewCanvas'],['pythonWorkspace','python','viewPython'],['telemetryWorkspace','telemetry','viewTelemetry'],['applicationWorkspace','application','viewApplication'],['agentWorkspace','agent','viewAgent']]){
     $(id).hidden=view!==name;$(tab).classList.toggle('active',view===name);$(tab).setAttribute('aria-selected',String(view===name));
   }
   $('brainName').disabled=view!=='canvas';
   if(view==='python'){if(!codeDirty)$('codeEditor').value=generatedCode;$('codeEditor').focus();}
   if(view==='telemetry'&&!$('telemetryFrame').getAttribute('src'))$('telemetryFrame').src='/telemetry/';
   if(view==='application')await refreshApplication();
+  if(view==='agent'&&typeof refreshAgent==='function')await refreshAgent();
   updatePythonStatus();
 }
 
